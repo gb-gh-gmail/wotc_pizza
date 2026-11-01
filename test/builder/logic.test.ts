@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error - plain browser JavaScript, imported here only so its decisions can be tested
 import * as page from '../../src/builder/ui/logic.js';
 
@@ -6,6 +6,7 @@ const {
   money, parseHundredths, tipFromInput, codesFromInput, buildQuoteRequest, interpretQuote,
   claimFromQuote, buildPlaceRequest, describeHold, newIdempotencyKey,
   tipInputsFromOrder, linesFromOrder, describeDelta, compareToCurrent, lockedMessage, watchVerdict,
+  debounce, latestOnly,
   STATUS, canPlaceOrder, whyNotPlaceable, secondsLeft, formatCountdown, carryOver,
 } = page;
 
@@ -418,6 +419,120 @@ describe('editing: the order moves on while the customer is changing it', () => 
 
   it('an order that could not be read is not a reason to raise an alarm', () => {
     expect(watchVerdict(null, { version: 3 })).toEqual({ verdict: 'ok' });
+  });
+});
+
+describe('debounce: a burst of changes fires once, with the last one', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('does nothing until the changes stop, then runs once', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 450);
+    d();
+    vi.advanceTimersByTime(449);
+    expect(fn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('a rapid burst fires ONCE, after the last change, with the last arguments', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 450);
+    for (const n of [1, 2, 3, 4, 5]) {
+      d(n);
+      vi.advanceTimersByTime(100); // each change arrives before the previous wait is over
+    }
+    expect(fn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(450);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn).toHaveBeenCalledWith(5);
+  });
+
+  it('every change restarts the wait', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 450);
+    d();
+    vi.advanceTimersByTime(400);
+    d(); // restarts: the first run is no longer due at 450
+    vi.advanceTimersByTime(400);
+    expect(fn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(50);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('two bursts with a pause between them fire twice, once each', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 450);
+    d('a');
+    d('b');
+    vi.advanceTimersByTime(450);
+    d('c');
+    d('d');
+    vi.advanceTimersByTime(450);
+    expect(fn.mock.calls).toEqual([['b'], ['d']]);
+  });
+
+  it('cancel drops a run that is waiting, and says whether one is', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 450);
+    expect(d.pending()).toBe(false);
+    d();
+    expect(d.pending()).toBe(true);
+    d.cancel();
+    expect(d.pending()).toBe(false);
+    vi.advanceTimersByTime(1000);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('is no longer pending once it has run, and can be used again', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 450);
+    d();
+    vi.advanceTimersByTime(450);
+    expect(d.pending()).toBe(false);
+    d();
+    vi.advanceTimersByTime(450);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the real timers by default, called as plain functions (a browser refuses them as methods)', () => {
+    const fn = vi.fn();
+    const d = debounce(fn, 10); // no timers passed: the default wrappers
+    d();
+    vi.advanceTimersByTime(10);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('latestOnly: when answers overlap, only the newest is used', () => {
+  it('the newest ticket is the latest; an older one is not', () => {
+    const latest = latestOnly();
+    const first = latest.next();
+    expect(latest.isLatest(first)).toBe(true);
+    const second = latest.next();
+    expect(latest.isLatest(first)).toBe(false);
+    expect(latest.isLatest(second)).toBe(true);
+  });
+
+  it('answers that arrive out of order: the slow older one is ignored, the newer one is kept', () => {
+    const latest = latestOnly();
+    const shown: string[] = [];
+    const answer = (ticket: number, text: string) => { if (latest.isLatest(ticket)) shown.push(text); };
+
+    const older = latest.next(); // request 1 sent
+    const newer = latest.next(); // request 2 sent, because the customer changed something
+    answer(newer, 'newer'); // request 2 comes back first
+    answer(older, 'older'); // request 1 limps in later and must not overwrite it
+    expect(shown).toEqual(['newer']);
+  });
+
+  it('invalidate makes every request still in flight out of date (the order changed again)', () => {
+    const latest = latestOnly();
+    const inFlight = latest.next();
+    latest.invalidate();
+    expect(latest.isLatest(inFlight)).toBe(false);
+    expect(latest.isLatest(latest.next())).toBe(true); // and the next request starts fresh
   });
 });
 

@@ -446,10 +446,26 @@ compares it with the figures the page is showing. Placing the order (later) uses
   cannot send its own discount or total; only the order itself, the token and the claimed
   figures are read, and the claimed figures are only compared, never trusted.
 
-## D27. The order page: a checked-and-confirmed state machine, modal while busy — Decided
+## D27. The order page: live totals, a checked-and-confirmed state machine, modal for submitting — Decided
 The page keeps the order in memory and previews the subtotal as the customer edits. The
-authoritative figures come from `POST /quote` when the customer presses **Check my total** or
-**Apply** (a promo code). **Place order** is disabled until the order has been checked.
+authoritative figures come from `POST /quote`, and **they update by themselves as the customer
+edits** (the brief's running total, including tip and promo changes). **Place order** is disabled
+until the order has been checked.
+
+**Live totals.** Each edit (a pizza, topping, quantity, size, tip) restarts a 450 ms wait, so a burst
+of changes (several toppings clicked, a tip typed digit by digit) sends **one** request for the final
+state. If a request is already on its way when the next change arrives it is cancelled, and an answer
+that still arrives is ignored if anything has changed since: **the last change always wins**
+(`debounce` and `latestOnly` in `logic.js`, unit-tested with fake timers). These updates are *quiet*: a
+small "Updating your total…" note, the page stays fully usable, and nothing steals keyboard focus. The
+blocking overlay is only for placing or saving an order and renewing the session. A promo code is
+applied with **Apply** (or Enter), not as it is typed, so a code does not cost a request per letter; a
+code that is typed but not applied disables Place order, with a message, so nobody places an order
+believing a promo was used. A tip that cannot be read sends nothing and shows its message. A new page
+shows the total of its starting pizza at once. Verified in a real browser: a burst of five toppings sent
+one request, a change during a slow update cancelled the first and the screen showed the last state, and
+the change page's comparison updated with no button pressed. **Refresh total** remains for retrying
+after a failed update.
 - **One state machine decides it** (`logic.js`, unit-tested without a browser): *not checked* →
   *checking* → *ready* or *needs your OK* → *confirmed*; plus *timed out* and *error*. Place
   order is enabled only in *ready* and *confirmed*. **Any edit** (a pizza, a topping, quantity,

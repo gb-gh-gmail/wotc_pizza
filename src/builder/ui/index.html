@@ -55,6 +55,7 @@
     #summary { margin-top:1rem; }
     #summary.stale { opacity:.5; }
     #summary .stalenote { color:var(--warn); font-size:.85rem; margin:0 0 .3rem; }
+    #summary .updating { color:var(--muted); font-size:.85rem; margin:0 0 .3rem; }
     #summary dl { display:grid; grid-template-columns:1fr auto; gap:.2rem 1rem; margin:0; font-variant-numeric:tabular-nums; }
     #summary dd { margin:0; text-align:right; }
     #summary .total { font-weight:700; font-size:1.15rem; border-top:1px solid var(--line); padding-top:.3rem; margin-top:.2rem; }
@@ -153,7 +154,7 @@
       <div id="summary" role="status" aria-live="polite"></div>
 
       <div class="actions">
-        <button id="checkBtn" type="button">Check my total</button>
+        <button id="checkBtn" type="button" title="Your total updates by itself as you change your order; use this if an update failed">Refresh total</button>
         <button id="placeBtn" type="button" class="primary" disabled>Place order</button>
         <span class="hint" id="placeHint"></span>
       </div>

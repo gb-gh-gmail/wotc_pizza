@@ -11,11 +11,13 @@ import {
   STATUS, money, tipFromInput, codesFromInput, buildQuoteRequest, interpretQuote,
   buildPlaceRequest, describeHold, newIdempotencyKey,
   tipInputsFromOrder, linesFromOrder, compareToCurrent, watchVerdict, lockedMessage,
+  debounce, latestOnly,
   canPlaceOrder, whyNotPlaceable, secondsLeft, formatCountdown, carryOver,
 } from '/logic.js';
 
 const MAX_QTY = 100;
 const REQUEST_TIMEOUT_MS = 15_000;
+const AUTO_CHECK_MS = 450; // how long changes must stop before the total is refreshed
 const WATCH_MS = 3000; // how often an order being changed is checked to see whether it has moved on
 const SOON_SECONDS = 300;
 const $ = (id) => document.getElementById(id);
@@ -87,12 +89,14 @@ function endBusy() {
 $('busy').addEventListener('cancel', (e) => e.preventDefault());
 $('timeout').addEventListener('cancel', (e) => e.preventDefault());
 
-async function postJson(path, body, extraHeaders = {}, method = 'POST') {
+async function postJson(path, body, extraHeaders = {}, method = 'POST', cancel) {
+  // A request can be cancelled by the caller (a newer one has replaced it) and always times out.
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const res = await fetch(path, {
     method,
     headers: { 'content-type': 'application/json', ...extraHeaders },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: cancel && AbortSignal.any ? AbortSignal.any([cancel, timeout]) : timeout,
   });
   return { status: res.status, ok: res.ok, data: await res.json().catch(() => ({})) };
 }
@@ -239,13 +243,27 @@ function syncRemoveButtons() {
 
 // ----------------------------------------------------- edits mark it stale ---
 
+// The total is kept up to date as the customer edits. Each change restarts a short wait, so a burst of
+// changes (typing a tip, clicking several toppings, holding down a quantity arrow) sends ONE request, for
+// the final state. If a request is already on its way when the next change arrives it is cancelled and its
+// answer, should it still arrive, is thrown away: the last change always wins. These updates are quiet (the
+// page stays usable); the blocking overlay is only for placing or saving an order and renewing the session.
+const autoCheck = debounce(() => check(), AUTO_CHECK_MS);
+const latest = latestOnly();
+let inflight = null; // the AbortController of the quote request on its way, if any
+
 /** The order, tip or promos changed: whatever was checked no longer describes the order. */
 function edited() {
   if (status === STATUS.EXPIRED || status === STATUS.LOCKED) return;
+  if (busyCount > 0) return; // a request that locks the page is running; the page is inert, so a change here is not the customer's
   status = STATUS.STALE;
   notices = [];
   pendingKey = null; // a changed order is a new attempt
   $('promoMsg').textContent = '';
+  latest.invalidate(); // any answer still on its way is for an order that no longer exists
+  inflight?.abort();
+  inflight = null;
+  autoCheck(); // refresh the total once the changes stop
   renderSummary();
 }
 
@@ -274,10 +292,12 @@ function renderSummary() {
     if (status === STATUS.NEEDS_CONFIRM) notice.append(el('button', { id: 'accept', type: 'button', class: 'primary', onclick: accept }, acceptLabel));
   }
 
-  // The service's figures, dimmed once the order has changed since.
+  // The service's figures, dimmed while they are being brought up to date.
   const summary = $('summary');
-  summary.className = status === STATUS.STALE || status === STATUS.EXPIRED ? 'stale' : '';
+  const updating = status === STATUS.CHECKING || (status === STATUS.STALE && autoCheck.pending());
+  summary.className = status === STATUS.STALE || status === STATUS.EXPIRED || status === STATUS.CHECKING ? 'stale' : '';
   summary.replaceChildren(el('p', { class: 'hint' }, `Pizzas and toppings so far: ${money(previewSubtotal())}`));
+  if (updating) summary.append(el('p', { class: 'updating', role: 'status' }, 'Updating your total…'));
   if (last) {
     const q = last.quote;
     const rows = [['Subtotal', money(q.subtotalCents)]];
@@ -287,7 +307,8 @@ function renderSummary() {
     const dl = el('dl', {});
     for (const [k, v] of rows) dl.append(el('dt', {}, k), el('dd', {}, v));
     dl.append(el('dt', { class: 'total' }, 'Total'), el('dd', { class: 'total' }, money(q.totalCents)));
-    if (status === STATUS.STALE || status === STATUS.EXPIRED) summary.append(el('p', { class: 'stalenote' }, 'Out of date: check your total again.'));
+    // Out of date and not on its way to being updated (for instance the tip needs fixing first).
+    if (!updating && (status === STATUS.STALE || status === STATUS.EXPIRED)) summary.append(el('p', { class: 'stalenote' }, 'Out of date: fix the problem above, or press Refresh total.'));
     summary.append(dl);
     if (q.withoutPromo) {
       const saved = q.withoutPromo.totalCents - q.totalCents;
@@ -296,9 +317,16 @@ function renderSummary() {
     if (editing) summary.append(compareTable(q));
   }
 
+  // A promo code that has been typed but not applied is not part of the order: make that plain rather than
+  // let the customer place an order believing the code was used.
+  const unappliedPromo = codesFromInput($('promoInput').value).length > 0;
+  $('applyPromo').disabled = status === STATUS.CHECKING || status === STATUS.EXPIRED || status === STATUS.LOCKED;
   $('placeBtn').textContent = editing ? 'Save changes' : 'Place order';
-  $('placeBtn').disabled = !canPlaceOrder(status);
-  $('placeHint').textContent = whyNotPlaceable(status) ?? (editing ? 'Ready to save your changes.' : 'Ready to place your order.');
+  $('placeBtn').disabled = !canPlaceOrder(status) || unappliedPromo;
+  $('placeHint').textContent =
+    canPlaceOrder(status) && unappliedPromo
+      ? 'Press Apply to use the promo code you typed, or clear it.'
+      : (whyNotPlaceable(status) ?? (editing ? 'Ready to save your changes.' : 'Ready to place your order.'));
 }
 
 /** When changing an order: how the updated order compares with the order as it stands, part by part. */
@@ -335,7 +363,9 @@ $('tipMode').addEventListener('change', () => {
   edited();
 });
 $('tipValue').addEventListener('input', () => { $('tipMsg').textContent = ''; edited(); });
-$('promoInput').addEventListener('input', () => edited());
+// Typing a promo code does not change the order until it is applied, so it does not trigger an update
+// (that would send a request for every letter); it only makes Place order wait for Apply.
+$('promoInput').addEventListener('input', () => { $('promoMsg').textContent = ''; renderSummary(); });
 $('promoInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyPromo(); } });
 
 function removePromo(code) {
@@ -349,20 +379,38 @@ function applyPromo() {
     $('promoMsg').textContent = 'Enter a promo code first.';
     return;
   }
-  check('Applying your promo code…');
+  check({ includeTyped: true, focusAccept: true }); // an explicit action: do it now, not after a pause
 }
 
 // ------------------------------------------------------------------- quote ---
 
-async function check(label = 'Checking your total…') {
+/**
+ * Ask the service what the order as it stands costs, and show it. Quiet: the page stays usable while it runs.
+ *   includeTyped  also apply the promo code(s) typed in the box (only when the customer pressed Apply)
+ *   keepNotices   add to the notices already showing rather than replace them
+ *   focusAccept   move focus to a "confirm" button if one appears (only for something the customer just asked for,
+ *                 never for an update they did not ask for, which would steal focus from what they are typing)
+ */
+async function check({ includeTyped = false, keepNotices = false, focusAccept = false } = {}) {
+  autoCheck.cancel(); // this check replaces any update that was waiting for the changes to stop
+  inflight?.abort(); // and any request still on its way
+  if (status === STATUS.EXPIRED || status === STATUS.LOCKED) return;
+
   const tip = tipFromInput($('tipMode').value, $('tipValue').value);
   $('tipMsg').textContent = tip.ok ? '' : tip.message;
-  if (!tip.ok) return;
+  if (!tip.ok) {
+    latest.invalidate();
+    inflight = null;
+    renderSummary(); // the total stays out of date until the tip is fixed
+    return;
+  }
 
-  // Codes already applied plus any just typed; typed ones are moved out of the box now.
-  promoCodes = [...new Set([...promoCodes, ...codesFromInput($('promoInput').value)])];
-  $('promoInput').value = '';
-  $('promoMsg').textContent = '';
+  if (includeTyped) {
+    // Codes already applied plus any just typed; typed ones are moved out of the box now.
+    promoCodes = [...new Set([...promoCodes, ...codesFromInput($('promoInput').value)])];
+    $('promoInput').value = '';
+    $('promoMsg').textContent = '';
+  }
 
   // Figures are only claimed if they are what the customer is looking at (not dimmed).
   const figuresShown = last && status !== STATUS.STALE && status !== STATUS.EXPIRED;
@@ -382,18 +430,21 @@ async function check(label = 'Checking your total…') {
   // The codes the customer was last looking at as applied (when changing an order: the ones it already has).
   const appliedBefore = last ? last.appliedCodes : editing ? editing.appliedCodes : [];
 
+  const ticket = latest.next(); // this request is now the newest; an older answer arriving later is ignored
+  const controller = new AbortController();
+  inflight = controller;
   status = STATUS.CHECKING;
   renderSummary();
-  beginBusy(label);
   try {
-    const res = await postJson('/api/quote', request);
-    if (status === STATUS.EXPIRED) return; // the session ended while we waited; the dialog is already up
+    const res = await postJson('/api/quote', request, {}, 'POST', controller.signal);
+    if (!latest.isLatest(ticket)) return; // the customer changed something again: last one wins
+    if (status === STATUS.EXPIRED || status === STATUS.LOCKED) return; // the dialog for that is already up
 
     if (res.ok) {
       const result = interpretQuote(res.data, { appliedBefore });
       last = { quote: res.data.quote, appliedCodes: result.appliedCodes };
       promoCodes = result.appliedCodes; // a refused code is removed from the box
-      notices = result.notices;
+      notices = keepNotices ? [...notices, ...result.notices] : result.notices;
       acceptLabel = result.acceptLabel;
       $('promoMsg').textContent = result.rejectedNew.map((r) => r.message).join(' ');
       status = result.needsConfirm ? STATUS.NEEDS_CONFIRM : STATUS.READY;
@@ -409,12 +460,15 @@ async function check(label = 'Checking your total…') {
       notices = [res.data.message ?? 'Something went wrong. Please try again.'];
     }
   } catch (err) {
+    if (!latest.isLatest(ticket) || err?.name === 'AbortError') return; // replaced by a newer request: say nothing
     status = STATUS.ERROR;
     notices = [networkMessage(err)];
   } finally {
-    endBusy();
-    renderSummary();
-    $('accept')?.focus(); // draw a keyboard user to what needs their attention
+    if (latest.isLatest(ticket)) {
+      inflight = null;
+      renderSummary();
+      if (focusAccept) $('accept')?.focus(); // draw a keyboard user to what needs their attention
+    }
   }
 }
 
@@ -424,7 +478,7 @@ function accept() {
   renderSummary();
 }
 
-$('checkBtn').addEventListener('click', () => check());
+$('checkBtn').addEventListener('click', () => check({ focusAccept: true })); // "Refresh total": for after an error
 $('applyPromo').addEventListener('click', applyPromo);
 $('addLine').addEventListener('click', () => { addLine(); edited(); });
 $('placeBtn').addEventListener('click', placeOrder);
@@ -448,6 +502,7 @@ function askConfirm(items, totalCents) {
 
 async function placeOrder() {
   if (!canPlaceOrder(status) || !last) return;
+  if (codesFromInput($('promoInput').value).length > 0) return; // a typed promo code that was never applied: Apply or clear it first
   const tip = tipFromInput($('tipMode').value, $('tipValue').value);
   if (!tip.ok) { $('tipMsg').textContent = tip.message; return; }
 
@@ -628,11 +683,12 @@ async function renewSession() {
 
     status = STATUS.STALE;
     last = null;
-    notices = ['Prices were refreshed and may have changed. Check your total again.'];
+    notices = ['Prices were refreshed and may have changed.'];
     if (carried.dropped.length) notices.push(`No longer on the menu, so removed from your order: ${carried.dropped.join(', ')}.`);
     $('timeout').close();
     renderSummary();
     tick();
+    check({ keepNotices: true }); // bring the total up to date on the new prices (quiet; not waited for)
   } catch (err) {
     $('timeoutText').textContent = err instanceof Error && err.message ? err.message : 'We could not get new prices. Please try again.';
   } finally {
@@ -782,11 +838,11 @@ async function start() {
   renderSummary();
   tick();
 
-  if (toChange) {
-    watchTimer = setInterval(watchOrder, WATCH_MS);
-    // Price the order as it stands on today's menu straight away, so the comparison is on screen.
-    await check('Checking your order against today’s prices…');
-  }
+  if (toChange) watchTimer = setInterval(watchOrder, WATCH_MS);
+
+  // Show the total straight away, for the order as it stands: the pizza a new order starts with, or (when
+  // changing an order) the saved order priced on today's menu so the comparison is on screen at once.
+  await check({ keepNotices: true });
 }
 
 start();

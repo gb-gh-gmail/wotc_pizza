@@ -279,6 +279,51 @@ export function watchVerdict(order, { version }) {
   return { verdict: 'ok' };
 }
 
+// ------------------------------------------------------------- live updates ---
+
+/**
+ * Wait until calls have stopped for `ms`, then run `fn` once with the LAST call's arguments. A burst of
+ * rapid changes therefore produces one run, for the final state. `timers` is injectable for tests; the
+ * defaults are wrapped because a browser's setTimeout refuses to run as a method of another object.
+ */
+export function debounce(fn, ms, timers = { setTimeout: (f, t) => setTimeout(f, t), clearTimeout: (h) => clearTimeout(h) }) {
+  let handle = null;
+  let lastArgs = [];
+  const run = () => {
+    handle = null;
+    fn(...lastArgs);
+  };
+  const debounced = (...args) => {
+    lastArgs = args;
+    if (handle !== null) timers.clearTimeout(handle);
+    handle = timers.setTimeout(run, ms);
+  };
+  /** Forget any run that is waiting. */
+  debounced.cancel = () => {
+    if (handle !== null) timers.clearTimeout(handle);
+    handle = null;
+  };
+  /** Is a run waiting? */
+  debounced.pending = () => handle !== null;
+  return debounced;
+}
+
+/**
+ * "Last one wins" for requests that can overlap: take a ticket when a request starts; when its answer
+ * arrives, use it only if no newer ticket has been taken (and nothing has invalidated it) since.
+ */
+export function latestOnly() {
+  let current = 0;
+  return {
+    next: () => ++current,
+    isLatest: (ticket) => ticket === current,
+    /** Make every ticket taken so far out of date, e.g. because the order has changed again. */
+    invalidate: () => {
+      current++;
+    },
+  };
+}
+
 // ------------------------------------------------------------------ state ---
 
 /** Statuses of the quote, in the order a customer meets them. */
@@ -314,6 +359,8 @@ export function whyNotPlaceable(status) {
       return 'This order can no longer be changed.';
     case STATUS.ERROR:
       return 'We could not check your total. Please try again.';
+    case STATUS.STALE:
+      return 'Your total is out of date.';
     default:
       return 'Check your total before placing the order.';
   }
