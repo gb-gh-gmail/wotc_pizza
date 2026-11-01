@@ -15,7 +15,8 @@
     "start:builder": "tsx src/builder/main.ts",
     "dev:builder": "tsx watch --env-file=.env.development src/builder/main.ts",
     "dev": "concurrently -n service,builder -c blue,green npm:dev:service npm:dev:builder",
-    "db:reset": "node scripts/db-reset.mjs"
+    "db:reset": "node scripts/db-reset.mjs",
+    "seed:orders": "node scripts/seed-orders.mjs"
   },
   "dependencies": {
     "fastify": "^5.12.7",
