@@ -8,7 +8,7 @@ import type { Issue } from '../../core/pricing.js';
 export type { HoldReason } from './write.js';
 
 export interface PlaceRequest extends Submission {
-  /** Chosen by the client, once per submission; makes a retry safe (docs/decisions.md D29). */
+  /** Chosen by the client, once per submission; makes a retry safe (docs/decisions-detailed.md D29). */
   idempotencyKey: string;
 }
 

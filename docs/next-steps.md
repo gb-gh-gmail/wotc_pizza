@@ -77,7 +77,7 @@ whole codebase**, read critically, by anyone. That is the next piece of verifica
   no automated tests): the state machine, stale or overlapping answers, focus and dialogs.
 - **Queries and schema:** confirm every query uses bound parameters and that the schema's constraints match
   what the code assumes.
-- **Docs against code:** every claim in `decisions.md`, `assumptions.md`, `configuration.md` and the README
+- **Docs against code:** every claim in `decisions-detailed.md`, `assumptions-detailed.md`, `configuration.md` and the README
   checked against what the code actually does.
 - **The tests themselves:** do they fail when they should? Break a rule on purpose (a mutation check, as
   was done once for the layering test) and confirm a test notices.
@@ -87,6 +87,21 @@ whole codebase**, read critically, by anyone. That is the next piece of verifica
 corrected docs. It also feeds the AI usage note: what the AI got wrong, and how it was caught.
 
 ## Known issues to fix
+
+- **A change should be priced from the menu snapshot taken when the order was placed (assumption A19).**
+  *Today:* the change page fetches a fresh menu and the whole updated order, including pizzas the customer
+  did not touch, is priced on it, so a price that moved since the order was placed shows up in the
+  comparison. *Wanted:* the customer keeps the prices they were shown, so the update is priced from the
+  original order's snapshot (its token is already stored on the order). This was an assumption the AI made,
+  and review of the design says it is probably wrong. *Decision deferred, with a likely direction:* the
+  snapshot would have to **stay around until the order is finalized** (Delivered or Cancelled), not just for the
+  30-minute session. That also settles what happens when a snapshot has expired: it does not, while the order
+  can still be changed. *To do:* keep an order's snapshot until then
+  (startup purges expired ones today, so an order's snapshot can be gone), and purge only snapshots no open
+  order uses; price a change from that snapshot;
+  decide what happens if an item is no longer on the current menu or a promo changed (promos are still
+  checked live); add the lock-expiry rule for a change; update the change page, the comparison wording, A19,
+  D-notes and tests.
 
 - **Overlay modal while submitting an order (and renewing the session).** *Wanted:* while a request
   that must not be disturbed is running (Place order, Save changes, Get new prices) the whole page is
@@ -228,9 +243,8 @@ every pizza is a size plus toppings, built directly on the page.
 - **Not built:** any way to schedule a change except editing the database; bulk repricing (today
   repricing all premium toppings is one row per topping; pricing by category was noted as an
   escape hatch in D5); telling customers a price is about to change.
-- **Think about:** *per-line price protection on a change.* Today an unchanged pizza is re-priced
-  on today's menu when an order is changed (assumption A19). Keeping the price a customer originally
-  agreed would mean each revision line carrying and honouring its original price. Also, prices
+- **Think about:** *prices on a change* is now a known issue to fix (see the top of this file); pricing
+  a change from the original snapshot needs no per-line price locking. Also, prices
   deliberately have no overlap trigger (several menus can coexist, D5), so the service refuses to
   quote an item that has zero or two prices in effect rather than guess.
 

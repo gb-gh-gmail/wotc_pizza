@@ -118,7 +118,7 @@ with no deploy. Change them with any SQLite tool on the database file (`data/ord
 | Promo codes | `promos` | A promo is a row; `exclusive` (default on) means it cannot be combined with another promo; `active`, `starts_at` and `ends_at` switch it on and off |
 
 Timestamps in these tables must be UTC in exactly this form: `2026-01-01T00:00:00.000Z`. The database
-refuses anything else. The reasoning is in [decisions.md](decisions.md) (D4, D5, D10, D12, D25).
+refuses anything else. The reasoning is in [decisions-detailed.md](decisions-detailed.md) (D4, D5, D10, D12, D25).
 
 ## Troubleshooting
 

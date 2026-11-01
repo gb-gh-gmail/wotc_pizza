@@ -123,6 +123,56 @@ test/          Automated tests
 docs/          Configuration, design decisions, assumptions, next steps
 ```
 
+## Assumptions and decisions
+
+The brief leaves some things open, and in places we added rules of our own. They are kept apart here:
+**assumptions** are how we read something the brief left ambiguous or silent; **decisions** are rules we chose
+to add. Every entry, with where it is implemented, is in [docs/assumptions.md](docs/assumptions.md) (short list; full entries in [assumptions-detailed.md](docs/assumptions-detailed.md)) (IDs in
+brackets), and the reasoning for the larger choices is in [docs/decisions.md](docs/decisions.md).
+
+### Assumptions (how we read the brief)
+
+- **Order of operations.** Subtotal, then promos off the subtotal, then tax on the *discounted* amount, then the
+  tip. A percentage tip is a percentage of the whole bill (discounted subtotal plus tax); a dollar tip is added as
+  entered. (A8)
+- **Rounding** is half-up to the whole cent, at each percentage taken (toppings, discount, tax, tip). (A11)
+- **"Over $20" is strict** and judged on the subtotal *before* the discount: exactly $20.00 does not qualify for
+  `SAVE5`. (A9)
+- **Promos apply in the order entered.** Both promos in the brief are exclusive, so entering `SAVE5` then
+  `ILOVEPIZZA` keeps the first and refuses the second with a message. An invalid code is not applied, but the
+  order is still priced. (A10)
+- **Cancelling needs a fifth status, `CANCELLED`.** The brief names four statuses but lets a customer cancel, so a
+  cancelled order is kept rather than deleted. (A1)
+- **The kitchen may cancel until delivery.** The brief limits only the *customer's* cancel to before the kitchen
+  starts; staff may need to scrap an order already being made. (A4)
+- **Cancelling twice is not an error**: a retried cancel returns the same result. (A2)
+- **A customer can change or cancel an order only while it is Not Started.** The brief gives that window for
+  cancelling; we read changes the same way. A late attempt is refused and says what the order's real status is.
+  (A3, A18)
+- **Out of scope, as the brief says:** authentication and security hardening (the kitchen screen is open to
+  anyone who can reach it), real payments, and a real kitchen integration.
+
+### Decisions beyond the brief (rules we added)
+
+- **A very large tip is confirmed first**: 50% or more of the bill, on a bill of $40 or more. It guards against a
+  stray zero. Tips are never negative. (A15)
+- **Sanity limits:** quantity 1 to 100 per line, at most 50 lines, a tip of at most $500 or 100%, and a topping at
+  most once per pizza. (A12, A13)
+- **The price shown is the price paid.** The menu a customer loads is kept for 30 minutes (a database setting);
+  a price change in that time does not change their charge. (A6, A14)
+- **Nothing is charged that the customer has not seen.** The service prices every order itself. If anything
+  differs from what the page showed, or a promo no longer applies, the order is held until the customer confirms
+  the corrected figures. (A16)
+- **A retry returns the original order**, not a second one, as long as it carries the same request key. (A17)
+- **A change is compared against the order as it stands** and saved only after the customer has seen the
+  comparison; every saved version is kept. (A20)
+- **An AI assumption that review says to change:** a change is currently priced on a fresh menu, so an untouched
+  pizza can change price. It should be priced from the menu snapshot taken when the order was placed, so the
+  customer keeps the prices they were shown. Not yet changed, and the details are deferred (most likely the
+  snapshot is kept until the order is finalized) ([next steps](docs/next-steps.md)). (A19)
+- **Extras for the kitchen screen:** an optional cancellation reason, and a record of who changed each status
+  and when. (A5, A7)
+
 ## Design write-up
 
 ### How is money represented and the total calculated? Where does pricing live, and why?
@@ -212,6 +262,10 @@ scheduled price change took effect up to a second late. A test it had written ca
 the schema reject any other timestamp format. Separately, its dev setup served stale copies of the pages after they
 were edited.
 
+**Output review flagged.** It assumed a changed order should be re-priced on the current menu, so an untouched
+pizza could change price. On review I think that is wrong: a change should keep the prices from the order's
+original menu snapshot. It is documented as an AI assumption, not yet fixed.
+
 **What I verified myself rather than trusting.** I clicked through the running app in my browser instead of relying
 on the passing tests (placing, tracking, changing and cancelling orders, and the kitchen screen). That found what
 hundreds of passing tests had not: the change page showed no order. I noticed from the browser's network calls that
@@ -225,6 +279,6 @@ them through the API, and tests check it reproduces each one to the cent.
 ## Documentation
 
 - [Configuration and scripts](docs/configuration.md): settings, every npm script, the database settings, and troubleshooting
-- [Design decisions](docs/decisions.md): why each major choice was made (money, pricing, price lock, order lifecycle, retries)
-- [Assumptions](docs/assumptions.md): every place the requirements were ambiguous, and the call made
+- [Design decisions](docs/decisions.md): an index of the major choices, each linking to its full record in [decisions-detailed.md](docs/decisions-detailed.md)
+- [Assumptions](docs/assumptions.md): the short list of how we read the brief and the rules we added, linking to [assumptions-detailed.md](docs/assumptions-detailed.md)
 - [Next steps and cut list](docs/next-steps.md): the fixes and enhancements that would take this MVP further, what was left out to stay in the timebox, and known issues

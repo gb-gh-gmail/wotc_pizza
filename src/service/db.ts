@@ -7,7 +7,7 @@ import type { Logger } from '../lib/logger.js';
 const DB_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../db');
 
 /**
- * Bump whenever schema.sql changes at all; see docs/decisions.md D2 and D19. There are no
+ * Bump whenever schema.sql changes at all; see docs/decisions-detailed.md D2 and D19. There are no
  * migrations yet, so a database created by an older schema is refused (with instructions)
  * rather than half-started. A test fails if schema.sql changes without this being bumped.
  */

@@ -1,7 +1,7 @@
 /**
  * Money helpers. Amounts are integer cents; percentages are integer basis
  * points (100 bps = 1%). This is the ONLY place money is divided or rounded
- * (docs/decisions.md D3, D9): half-up to the whole cent, in exact integer
+ * (docs/decisions-detailed.md D3, D9): half-up to the whole cent, in exact integer
  * arithmetic, so the browser and the service always agree.
  */
 

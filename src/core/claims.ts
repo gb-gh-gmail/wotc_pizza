@@ -4,7 +4,7 @@
  * The page sends the amounts it is displaying (its "claim"). The service prices the
  * order itself and calls `compareClaimed`; any difference means the customer is
  * looking at something that is not what they would be charged, so the order is held
- * until they have seen the corrected figures and confirmed (docs/decisions.md D23).
+ * until they have seen the corrected figures and confirmed (docs/decisions-detailed.md D23).
  * A claim is only ever checked against the service's own result, never trusted.
  */
 import { formatCents, type Cents } from './money.js';

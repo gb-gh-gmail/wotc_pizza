@@ -7,7 +7,7 @@ import { assess, canonical, contentsOf, insertOrderBody, recordRevision, sha256,
 
 export interface UpdateRequest extends Submission {
   orderId: string;
-  /** Chosen by the client, once per submission; makes a retry safe (docs/decisions.md D29). */
+  /** Chosen by the client, once per submission; makes a retry safe (docs/decisions-detailed.md D29). */
   idempotencyKey: string;
   /** The version of the order the customer was looking at. The change is only applied to that version. */
   expectedVersion: number;

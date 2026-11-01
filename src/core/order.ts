@@ -26,7 +26,7 @@ export interface OrderInput {
   promoCodes?: string[];
 }
 
-/** Sanity limits. Documented in assumptions.md; they stop typos, not real orders. */
+/** Sanity limits. Documented in assumptions-detailed.md; they stop typos, not real orders. */
 export const LIMITS = {
   maxLines: 50,
   maxQuantity: 100,

@@ -12,7 +12,7 @@
  *
  * No I/O, no clock, no database. All amounts are integer cents (money.ts); the only
  * rounding is half-up, applied where each percentage is taken. Order of operations
- * and its rationale: docs/assumptions.md (A8).
+ * and its rationale: docs/assumptions-detailed.md (A8).
  */
 import type { MenuSnapshot } from './menu.js';
 import { priceLines } from './lines.js';
