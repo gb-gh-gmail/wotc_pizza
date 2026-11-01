@@ -333,6 +333,13 @@ Pairs with item 7.
 
 ## Order builder UI
 - **Keep the draft order across a page refresh** (it is held only in memory today).
+- **Instant totals with no network.** Today every total, tax and promo figure comes from the order
+  service (live, about half a second after the last change), and the browser only adds up the
+  whole-cent prices the service already worked out. The pricing engine in `src/core` has no database or
+  server code in it, so it *could* also run in the browser for totals that update at once, with the service
+  still checking everything again before an order is accepted. This was deliberately not done: it needs the
+  engine compiled for the browser, and having only the service price an order keeps a single source of
+  truth for the charge.
 
 ## Orders
 - **The kitchen simulation:** a timer that advances orders automatically, instead of the manual

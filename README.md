@@ -123,6 +123,105 @@ test/          Automated tests
 docs/          Configuration, design decisions, assumptions, next steps
 ```
 
+## Design write-up
+
+### How is money represented and the total calculated? Where does pricing live, and why?
+
+Money is **whole cents** and percentages are **whole basis points** (8% is `800`); pricing uses no floating
+point. Each percentage (a topping from its pizza's price, a discount, tax, a percentage tip) is rounded half-up
+to the cent when it is taken, by one helper in exact integer arithmetic. The total is built in a fixed order:
+the subtotal (each line's base plus toppings, times its quantity), then promos, then tax on the discounted
+amount, then the tip (flat, or a percentage of the bill after tax). A final check refuses to return any figure
+that does not add up.
+
+That logic is one pure module (`src/core`: lines, promos, totals) and it **runs in the order service only**. The
+browser adds up whole-cent prices the service already worked out, for an instant "so far" figure, and shows the
+service's totals, which refresh live as the customer edits. Why: **one source of truth**, so the total shown
+cannot differ from the total charged, and the service **never trusts a price from the browser**:
+- A quote is priced from a **menu snapshot** the service stored when it showed the menu (the exact prices, held
+  30 minutes), found by token, never from numbers the browser sends.
+- The page's figures are sent only as a *claim* to compare. Any difference (a changed price, a promo that no
+  longer applies, a stale page, a bug, tampering) does not alter the charge: it **holds the order until the
+  customer confirms the corrected figures**.
+- Placing an order runs the same check **again**, inside the transaction that writes it, so what was verified
+  is what is stored.
+
+Running the same engine in the browser for instant totals is a possible later improvement ([next steps](docs/next-steps.md)).
+
+### How does the design handle a new size, topping category or promo, including one with its own conditions and conflicts?
+
+Menus, prices and promos are **data, not code**, so none of these touches the pricing engine.
+- **A size, topping or category** is rows: a menu item plus a price rule (flat, or a percentage of the pizza's
+  price), effective-dated so old orders keep what they paid. A category is only a label. The page and API build
+  themselves from the menu.
+- **A promo** is a row: code, kind, percent or amount, a minimum subtotal, `exclusive` (the default: it cannot be
+  combined with another promo) and active dates. A promo with a condition of its own ("$2 off each large pizza")
+  is one small registered **strategy** handed a copy of the priced order. The minimum, exclusivity, cap and dates
+  apply to every kind.
+- **Conflicts:** promos apply in the order entered, and one that cannot be combined with one already applied is
+  refused with a message naming it ("SAVE5 cannot be combined with ILOVEPIZZA"). Finer rules would need a
+  pairwise table (next steps).
+
+Tests add a new size, topping category, flat-priced topping and promo kind with the engine unchanged.
+
+### How does the order lifecycle work? A retry after a timeout, and a cancel as the kitchen starts
+
+An order is **Not Started → Started → Ready for Pickup → Delivered**, plus **Cancelled** (added: the brief lets a
+customer cancel, and a cancelled order must end up somewhere). The kitchen advances orders on its screen; the
+customer can change or cancel only while Not Started; the kitchen can cancel up to delivery.
+
+**A retry after a timeout.** The page makes an idempotency key for each attempt and keeps it. On a retry the
+service looks the key up first, in the same transaction as the write: if the order was placed it returns **that**
+order and writes nothing; if the first request never arrived it places it. The key is stored in the same
+transaction as the order, so neither exists without the other. The same key for a different order is refused, and
+it works after the 30-minute session has expired. *Guarantee: at most one order per key.*
+
+**A cancel as the kitchen starts.** Both are conditional updates in a transaction that takes the database write
+lock first: `UPDATE … WHERE id = ? AND status = <the status just read>`, which must change exactly one row. Writers
+are serialized, so one commits first and the other sees the real status and is refused with it. The customer is
+told the kitchen has started, never that it was cancelled while being cooked. The service ignores what the page
+believes and re-reads the status. Changing an order uses the same guard plus a version number, and every change
+records who made it and when. *Caveat: both orders of arrival are tested, one after the other, but not two truly
+simultaneous requests; the guarantee rests on SQLite serializing writers.*
+
+### What was cut or faked, and what would come next?
+
+- **Not implemented:** the written order description on request (requirement 3), cut for time.
+- **Basic or faked:** the kitchen is a screen with buttons; no login or payments; error handling is basic outside
+  the pricing and ordering paths; no Docker; the pages' wiring was checked in a real browser by hand, not by
+  permanent tests; idempotency keys are never cleaned up; no database migrations.
+- **Next:** the order description; a full code review by AI and by a person; fuller error handling and data
+  integrity; real-browser and end-to-end tests ([next steps](docs/next-steps.md)).
+
+Separately, `next-steps.md` lists optional **enhancements** considered while shaping the schema (pre-built pizzas,
+pricing and menu changes, more promotion types). They are not planned work.
+
+### AI usage
+
+I built this with **Claude Code (Sonnet 5.5)**, which wrote nearly all of the code, tests and documentation. I
+directed it: we planned each piece before building it, checked in between major pieces, and kept a decisions log
+([docs/decisions.md](docs/decisions.md)) of what we chose and why.
+
+**Output I rejected.** Its first schema priced toppings by a rate held on the topping category (basic 8%, premium
+11%). I rejected that and asked for a price table linked to each menu item, with a type (flat or percentage), so a
+price change is a new row. The same review replaced its natural keys with surrogate ids, its pairwise
+promo-conflict table with a single `exclusive` flag, and its tax setting with an effective-dated tax table.
+
+**Output that was wrong.** Its price lookup compared timestamps as text, and `…:00Z` sorts after `…:00.000Z`, so a
+scheduled price change took effect up to a second late. A test it had written caught it, and the fix was to make
+the schema reject any other timestamp format. Separately, its dev setup served stale copies of the pages after they
+were edited.
+
+**What I verified myself rather than trusting.** I clicked through the running app in my browser instead of relying
+on the passing tests (placing, tracking, changing and cancelling orders, and the kitchen screen). That found what
+hundreds of passing tests had not: the change page showed no order. I noticed from the browser's network calls that
+it asked only for the menu and never for the order, which pinned it on stale page files; we fixed that and I
+re-tested it. I also checked that the prices the order screen shows match what I expected from the brief's
+pricing rules, and entered nine orders by hand through the app, covering every status; the seed script replays
+them through the API, and tests check it reproduces each one to the cent.
+
+**Not yet done:** a systematic review of all the code by a person (see [next steps](docs/next-steps.md)).
+
 ## Documentation
 
 - [Configuration and scripts](docs/configuration.md): settings, every npm script, the database settings, and troubleshooting
