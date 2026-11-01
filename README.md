@@ -15,50 +15,38 @@ It is two separate programs that talk to each other over HTTP:
 **To run it:** see [Running it](#running-it) (`npm install`, then `npm run dev`), and
 [Running the tests](#running-the-tests) (`npm test`).
 
-The customer's browser only ever talks to the order builder, which passes requests on to the order
-service. The order service is the single source of truth for prices: the total shown while building
-is checked against what the restaurant would actually charge, and an order is never placed at a
-price the customer was not shown.
+The customer's browser only talks to the order builder, which relays to the order service. The service is the
+single source of truth for prices, and an order is never placed at a price the customer was not shown.
 
 ## This is an MVP
 
-This is a **minimum viable product**: a deliberately basic system that works end to end (build,
-price, place, track, change, cancel, and a kitchen screen), designed to be extended rather than
-finished. The core is built carefully because that is where mistakes cost money: exact pricing,
-a price the customer is shown being the price they pay, safe retries, and an order lifecycle that
-cannot be corrupted by two things happening at once. Everything around it is kept simple.
+A **minimum viable product**: deliberately basic, working end to end (build, price, place, track, change,
+cancel, and a kitchen screen), and designed to be extended. The core is built carefully because that is where
+mistakes cost money: exact pricing, the price shown being the price paid, safe retries, and an order lifecycle
+that two things happening at once cannot corrupt. Everything around it is kept simple.
 
-What that means in practice:
-- **Basic by design:** no login or accounts, no real payments, no real kitchen integration (the
-  kitchen advances orders by hand on its screen), a simple web interface, and a single local database.
-  It is also not containerized yet: Docker was considered for a finalized version but is a
-  lower-priority secondary piece, planned for after this proof of concept.
-- **Not production-ready:** basic error handling is in place and is thorough in the pricing and
-  ordering paths, where the assessment puts the emphasis, but a fuller system-wide version is not
-  built, and security hardening is deferred (see the decisions log). Wider error handling, data
-  integrity checks and database migrations are the first follow-ups in the next-steps list.
-- **One requirement from the brief is not implemented: the written order description** (requirement 3,
-  "on request, a written description of the order including quantity, size and toppings for each line
-  item"). It was cut for time, in favour of pricing correctness and the order lifecycle. Customers can
-  see their order's contents on every page, but nothing produces a written description on request. The
-  data it needs is already returned by the API, and the plan is in
+- **Basic by design:** no login, no real payments, no real kitchen integration (staff advance orders by hand), a
+  simple web interface and one local database. Not containerized: Docker is a lower-priority piece for after this
+  proof of concept.
+- **Not production-ready:** error handling is thorough in the pricing and ordering paths and basic elsewhere;
+  security hardening is deferred.
+- **One requirement is not implemented: the written order description** (brief requirement 3). It was cut for
+  time, in favour of pricing correctness and the order lifecycle. An order's contents are shown on every page and
+  the API already returns what it needs; the plan is in
   [docs/next-steps.md](docs/next-steps.md#missing-requirement-the-order-description-not-implemented-due-to-time).
-- **Known gaps are written down, not hidden.** Fixes, enhancements and anything cut to stay in the
-  timebox are listed in [docs/next-steps.md](docs/next-steps.md), including the known issues to fix first.
+- **Known gaps are written down, not hidden**, in [docs/next-steps.md](docs/next-steps.md).
 
 ## What it does
 
-- **Pricing from the brief:** small $5, medium $7, large $12; basic toppings 8% and premium 11% of
-  the pizza's price; 6.5% tax; tips as dollars or a percentage; promo codes `ILOVEPIZZA` (10% off) and
-  `SAVE5` ($5 off an order over $20, not combinable with the other).
-- **Price lock:** the prices a customer sees are held for 30 minutes. If the restaurant changes a
-  price in the meantime, the customer is still charged what they were shown.
-- **Checks before placing:** the service re-prices every order itself and re-validates promo codes.
-  If anything differs from what the customer saw, the order is held and they confirm the new figures
-  first. Very large tips are confirmed too.
+- **Pricing from the brief:** small $5, medium $7, large $12; basic toppings 8% and premium 11% of the pizza's
+  price; 6.5% tax; tips as dollars or a percentage; promo codes `ILOVEPIZZA` (10% off) and `SAVE5` ($5 off an
+  order over $20, not combinable with the other).
+- **Price lock and checks:** the prices a customer sees are held for 30 minutes. The service re-prices every
+  order itself; if anything differs from what the customer saw, the order is held until they confirm the new
+  figures. Very large tips are confirmed too.
 - **Safe retries:** pressing Place order twice after a dropped connection places the order once.
-- **Lifecycle:** Not Started → Started → Ready for Pickup → Delivered. A customer can change or
-  cancel only while it is Not Started; the kitchen can cancel up to delivery.
+- **Lifecycle:** Not Started → Started → Ready for Pickup → Delivered. A customer can change or cancel only while
+  it is Not Started; the kitchen can cancel up to delivery.
 
 ## Running it
 
@@ -83,10 +71,9 @@ restarts them when code changes. Stop with Ctrl+C.
 | Menu with prices, as JSON | http://localhost:3001/menu |
 | Health checks | http://localhost:3001/health, http://localhost:3000/health |
 
-A quick way to try it: open the customer URL, add toppings (the total updates as you change the
-order), then press **Place order**. Open the kitchen screen in a second tab and press **Start cooking** to watch the customer's
-status page follow along. There is no login: the brief says authentication is out of scope, so the
-kitchen screen is open to anyone who can reach the service.
+To try it: open the customer URL, add toppings (the total updates as you edit), and press **Place order**. Open
+the kitchen screen in a second tab and press **Start cooking** to watch the status page follow along. There is
+no login (out of scope in the brief), so the kitchen screen is open to anyone who can reach the service.
 
 ### Sample orders
 
@@ -97,13 +84,11 @@ while the service is running:
 npm run seed:orders
 ```
 
-It places nine orders by calling the order service the way a customer and the kitchen would (so
-every order goes through the real pricing and checks), and leaves them in every state: not started,
-started, ready for pickup, delivered and cancelled. They are real orders that were entered by hand
-through the app, and they include both promo codes, both kinds of tip, an order that was changed
-and then cancelled, kitchen cancellations at two stages, and a very large tip that needs confirming. It prints each order's
-status, total and a link to its status page. It refuses to add to a database that already has orders;
-start clean with `npm run db:reset`, or add anyway with `npm run seed:orders -- --add`.
+It places nine orders through the real service (so each goes through the real pricing and checks) and leaves
+them in every state, including both promo codes, both kinds of tip, a changed-then-cancelled order, kitchen
+cancellations, and a very large tip. They are orders that were entered by hand through the app. It prints each
+order's total and status link, and refuses to add to a database that already has orders: start clean with
+`npm run db:reset`, or add anyway with `npm run seed:orders -- --add`.
 
 ### Running the tests
 
@@ -131,53 +116,41 @@ docs/          Configuration, design decisions, assumptions, next steps
 
 ## Assumptions and decisions
 
-The brief leaves some things open, and in places we added rules of our own. They are kept apart here:
-**assumptions** are how we read something the brief left ambiguous or silent; **decisions** are rules we chose
-to add. Every entry, with where it is implemented, is in [docs/assumptions.md](docs/assumptions.md) (short list; full entries in [assumptions-detailed.md](docs/assumptions-detailed.md)) (IDs in
-brackets), and the reasoning for the larger choices is in [docs/decisions.md](docs/decisions.md).
+**Assumptions** are how we read something the brief left ambiguous or silent; **decisions** are rules we chose
+to add. IDs in brackets point to [docs/assumptions.md](docs/assumptions.md) (the short list) and
+[assumptions-detailed.md](docs/assumptions-detailed.md); the reasoning for larger choices is in
+[docs/decisions.md](docs/decisions.md).
 
 ### Assumptions (how we read the brief)
 
-- **Order of operations.** Subtotal, then promos off the subtotal, then tax on the *discounted* amount, then the
-  tip. A percentage tip is a percentage of the whole bill (discounted subtotal plus tax); a dollar tip is added as
-  entered. (A8)
-- **Rounding** is half-up to the whole cent, at each percentage taken (toppings, discount, tax, tip). (A11)
-- **"Over $20" is strict** and judged on the subtotal *before* the discount: exactly $20.00 does not qualify for
-  `SAVE5`. (A9)
-- **Promos apply in the order entered.** Both promos in the brief are exclusive, so entering `SAVE5` then
-  `ILOVEPIZZA` keeps the first and refuses the second with a message. An invalid code is not applied, but the
-  order is still priced. (A10)
-- **Cancelling needs a fifth status, `CANCELLED`.** The brief names four statuses but lets a customer cancel, so a
-  cancelled order is kept rather than deleted. (A1)
-- **The kitchen may cancel until delivery.** The brief limits only the *customer's* cancel to before the kitchen
-  starts; staff may need to scrap an order already being made. (A4)
-- **Cancelling twice is not an error**: a retried cancel returns the same result. (A2)
-- **A customer can change or cancel an order only while it is Not Started.** The brief gives that window for
-  cancelling; we read changes the same way. A late attempt is refused and says what the order's real status is.
-  (A3, A18)
-- **Out of scope, as the brief says:** authentication and security hardening (the kitchen screen is open to
-  anyone who can reach it), real payments, and a real kitchen integration.
+- **Order of operations and rounding.** Subtotal, then promos, then tax on the *discounted* amount, then the tip.
+  A percentage tip is of the whole bill (discounted subtotal plus tax); a dollar tip is added as entered. Every
+  percentage is rounded half-up to the cent. (A8, A11)
+- **"Over $20" is strict** and judged before the discount: exactly $20.00 does not qualify for `SAVE5`. (A9)
+- **Promos apply in the order entered.** Both promos in the brief are exclusive, so `SAVE5` then `ILOVEPIZZA`
+  keeps the first and refuses the second with a message. An invalid code is not applied, but the order is still
+  priced. (A10)
+- **A fifth status, `CANCELLED`.** The brief lets a customer cancel but names four statuses, so a cancelled order
+  is kept, not deleted. Cancelling twice is not an error. (A1, A2)
+- **The kitchen may cancel until delivery**; the brief limits only the *customer's* cancel. (A4)
+- **A customer can change or cancel only while Not Started.** The brief gives that window for cancelling; we read
+  changes the same way. A late attempt is refused and says the order's real status. (A3, A18)
+- **Out of scope, as the brief says:** authentication and security hardening, real payments, a real kitchen.
 
 ### Decisions beyond the brief (rules we added)
 
-- **A very large tip is confirmed first**: 50% or more of the bill, on a bill of $40 or more. It guards against a
-  stray zero. Tips are never negative. (A15)
-- **Sanity limits:** quantity 1 to 100 per line, at most 50 lines, a tip of at most $500 or 100%, and a topping at
-  most once per pizza. (A12, A13)
-- **The price shown is the price paid.** The menu a customer loads is kept for 30 minutes (a database setting);
-  a price change in that time does not change their charge. (A6, A14)
-- **Nothing is charged that the customer has not seen.** The service prices every order itself. If anything
-  differs from what the page showed, or a promo no longer applies, the order is held until the customer confirms
-  the corrected figures. (A16)
-- **A retry returns the original order**, not a second one, as long as it carries the same request key. (A17)
-- **A change is compared against the order as it stands** and saved only after the customer has seen the
-  comparison; every saved version is kept. (A20)
-- **An AI assumption that review says to change:** a change is currently priced on a fresh menu, so an untouched
-  pizza can change price. It should be priced from the menu snapshot taken when the order was placed, so the
-  customer keeps the prices they were shown. Not yet changed, and the details are deferred (the original
-  snapshot is already kept for as long as the order exists) ([next steps](docs/next-steps.md)). (A19)
-- **Extras for the kitchen screen:** an optional cancellation reason, and a record of who changed each status
-  and when. (A5, A7)
+- **A very large tip is confirmed first:** 50% or more of the bill, on a bill of $40 or more. (A15)
+- **Sanity limits:** quantity 1 to 100, at most 50 lines, tips at most $500 or 100% and never negative, a topping
+  at most once per pizza. (A12, A13)
+- **The price shown is the price paid:** the menu is held for 30 minutes (a database setting). (A6, A14)
+- **Nothing is charged that the customer has not seen:** any difference holds the order for confirmation. (A16)
+- **A retry returns the original order**, not a second one. (A17)
+- **A change is compared with the order as it stands** and saved only after the customer has seen it; every
+  version is kept. (A20)
+- **An AI assumption that review says to change:** a change is priced on a fresh menu, so an untouched pizza can
+  change price. It should use the snapshot from when the order was placed, which is already kept. Not yet changed
+  ([next steps](docs/next-steps.md)). (A19)
+- **Extras for the kitchen screen:** an optional cancellation reason, and who changed each status and when. (A5, A7)
 
 ## Design write-up
 
@@ -247,10 +220,8 @@ simultaneous requests; the guarantee rests on SQLite serializing writers.*
   the pricing and ordering paths; no Docker; the pages' wiring was checked in a real browser by hand, not by
   permanent tests; idempotency keys are never cleaned up; no database migrations.
 - **Next:** the order description; a full code review by AI and by a person; fuller error handling and data
-  integrity; real-browser and end-to-end tests ([next steps](docs/next-steps.md)).
-
-Separately, `next-steps.md` lists optional **enhancements** considered while shaping the schema (pre-built pizzas,
-pricing and menu changes, more promotion types). They are not planned work.
+  integrity; real-browser and end-to-end tests. Optional product ideas (pre-built pizzas, pricing and menu
+  changes, more promo types) are listed separately as enhancements. All in [next steps](docs/next-steps.md).
 
 ### AI usage
 
