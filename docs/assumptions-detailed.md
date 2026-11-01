@@ -166,7 +166,7 @@ two different keys.
 *An assumption the AI made, not one the brief or the author asked for. Review concluded it is probably
 wrong: a change should be priced from the menu snapshot taken when the order was placed, so the customer
 keeps the prices they were shown (the same principle as A6). Not yet changed, and the details are
-deferred (most likely the snapshot is kept until the order is finalized); see "Known issues to fix" in
+deferred (the original snapshot is already kept for as long as the order exists); see "Known issues to fix" in
 `next-steps.md`.* The whole
 updated order is re-priced at current prices (including pizzas the customer did not touch), so a
 price moved since the original order shows up in the comparison rather than being hidden. The

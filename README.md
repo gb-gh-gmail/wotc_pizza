@@ -12,6 +12,9 @@ It is two separate programs that talk to each other over HTTP:
 | **Order builder** | The customer's website: build an order, check the price, place it, track it, change it | http://localhost:3000 |
 | **Order service** | The restaurant's backend: owns the menu, prices, orders and the kitchen screen (SQLite database) | http://localhost:3001 |
 
+**To run it:** see [Running it](#running-it) (`npm install`, then `npm run dev`), and
+[Running the tests](#running-the-tests) (`npm test`).
+
 The customer's browser only ever talks to the order builder, which passes requests on to the order
 service. The order service is the single source of truth for prices: the total shown while building
 is checked against what the restaurant would actually charge, and an order is never placed at a
@@ -108,6 +111,9 @@ start clean with `npm run db:reset`, or add anyway with `npm run seed:orders -- 
 npm test
 ```
 
+673 test cases run in a few seconds, with nothing to start first. What they check and why, and what they do not
+cover, is in [docs/testing.md](docs/testing.md).
+
 Ports, the database file, logging, the other scripts (resetting the database, running one program
 on its own) and troubleshooting are in [docs/configuration.md](docs/configuration.md).
 
@@ -168,8 +174,8 @@ brackets), and the reasoning for the larger choices is in [docs/decisions.md](do
   comparison; every saved version is kept. (A20)
 - **An AI assumption that review says to change:** a change is currently priced on a fresh menu, so an untouched
   pizza can change price. It should be priced from the menu snapshot taken when the order was placed, so the
-  customer keeps the prices they were shown. Not yet changed, and the details are deferred (most likely the
-  snapshot is kept until the order is finalized) ([next steps](docs/next-steps.md)). (A19)
+  customer keeps the prices they were shown. Not yet changed, and the details are deferred (the original
+  snapshot is already kept for as long as the order exists) ([next steps](docs/next-steps.md)). (A19)
 - **Extras for the kitchen screen:** an optional cancellation reason, and a record of who changed each status
   and when. (A5, A7)
 
@@ -278,6 +284,8 @@ them through the API, and tests check it reproduces each one to the cent.
 
 ## Documentation
 
+- [API reference](docs/api.md): every endpoint with example `curl` requests and the real responses
+- [Testing](docs/testing.md): how to run the tests, which invariants are tested and why, and what is not covered
 - [Configuration and scripts](docs/configuration.md): settings, every npm script, the database settings, and troubleshooting
 - [Design decisions](docs/decisions.md): an index of the major choices, each linking to its full record in [decisions-detailed.md](docs/decisions-detailed.md)
 - [Assumptions](docs/assumptions.md): the short list of how we read the brief and the rules we added, linking to [assumptions-detailed.md](docs/assumptions-detailed.md)

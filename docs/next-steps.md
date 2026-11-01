@@ -79,8 +79,8 @@ whole codebase**, read critically, by anyone. That is the next piece of verifica
   what the code assumes.
 - **Docs against code:** every claim in `decisions-detailed.md`, `assumptions-detailed.md`, `configuration.md` and the README
   checked against what the code actually does.
-- **The tests themselves:** do they fail when they should? Break a rule on purpose (a mutation check, as
-  was done once for the layering test) and confirm a test notices.
+- **The tests themselves:** do they fail when they should? Break a rule on purpose (a mutation check; so far
+  done only once, for the import-cycle rule) and confirm a test notices.
 - **Dependencies and configuration:** what is installed and why, and the defaults.
 
 **Outcome:** written review notes with the findings and what was done about each, the fixes themselves, and
@@ -92,16 +92,17 @@ corrected docs. It also feeds the AI usage note: what the AI got wrong, and how 
   *Today:* the change page fetches a fresh menu and the whole updated order, including pizzas the customer
   did not touch, is priced on it, so a price that moved since the order was placed shows up in the
   comparison. *Wanted:* the customer keeps the prices they were shown, so the update is priced from the
-  original order's snapshot (its token is already stored on the order). This was an assumption the AI made,
-  and review of the design says it is probably wrong. *Decision deferred, with a likely direction:* the
-  snapshot would have to **stay around until the order is finalized** (Delivered or Cancelled), not just for the
-  30-minute session. That also settles what happens when a snapshot has expired: it does not, while the order
-  can still be changed. *To do:* keep an order's snapshot until then
-  (startup purges expired ones today, so an order's snapshot can be gone), and purge only snapshots no open
-  order uses; price a change from that snapshot;
-  decide what happens if an item is no longer on the current menu or a promo changed (promos are still
-  checked live); add the lock-expiry rule for a change; update the change page, the comparison wording, A19,
-  D-notes and tests.
+  original order's snapshot. This was an assumption the AI made, and review of the design says it is
+  probably wrong. *Decision deferred.* *What already exists:* the original snapshot is **not** at risk of
+  being deleted: the startup clean-up never removes a snapshot that an order, or any earlier version of an
+  order, refers to (tested), so it stays after the order is finalized too. (An earlier version of this note
+  said otherwise; that was wrong.) *What is missing:* (1) after a change, the order points at the newest
+  snapshot, and the original is only reachable through the first saved version, so that needs a clear way to
+  find it; (2) a snapshot past its deadline is refused (`menu_expired`), so pricing a change from the original
+  would need a rule that lets a change use an expired snapshot while the order can still be changed; (3) decide
+  what happens if a size or topping on the original menu is no longer sold, and note that promos are still
+  checked live; (4) update the change page, the comparison wording, A19, the decision notes, and the test that
+  currently asserts the old behaviour ("prices the whole order on today's menu", `test/service/update.test.ts`).
 
 - **Overlay modal while submitting an order (and renewing the session).** *Wanted:* while a request
   that must not be disturbed is running (Place order, Save changes, Get new prices) the whole page is
@@ -133,6 +134,13 @@ corrected docs. It also feeds the AI usage note: what the AI got wrong, and how 
   version is deployed (the kitchen screen is left open all day) should notice and offer to reload,
   rather than carrying on with old code against a newer service. Add a real-browser test that
   edits a page, reloads, and sees the change.
+
+- **A test of every size with every topping through the whole pricing engine.** *Wanted:* a table-driven
+  test that prices each size with each topping alone, and with all toppings together, through the full order
+  engine, and compares each total with a figure worked out by hand from the brief ($5, $7, $12; basic 8%,
+  premium 11%; 6.5% tax). *Today:* the menu is checked (every topping has a price on every size, each equal to
+  the brief's percentage) and each size is priced on its own, but no single test covers every combination
+  end to end. Not written; the build was closed before it was added (see [testing](testing.md)).
 
 ## Error handling, transitions and data integrity (first follow-up; secondary to the core)
 

@@ -612,7 +612,7 @@ first ordered. This is shown, never silent (assumption A19). **This was the AI's
 indicates it should change:** the update should be priced from the menu snapshot kept when the order
 was placed, consistent with the price lock (D23). My earlier argument that this needs per-line price
 locking was wrong: pricing the whole change from the original snapshot needs no per-line machinery,
-only that the snapshot is kept while the order can still be changed. See `next-steps.md`.
+only a way to find the original snapshot and to allow an expired one for a change (it is already never deleted while an order refers to it). See `next-steps.md`.
 
 **On the page.** The status page offers *Change my order* only while the server says `canEdit`, and
 when that stops being true it removes the link and says why. The link opens a **separate page for
