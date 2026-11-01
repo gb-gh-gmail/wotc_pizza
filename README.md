@@ -254,33 +254,21 @@ pricing and menu changes, more promotion types). They are not planned work.
 
 ### AI usage
 
-I built this with **Claude Code (Sonnet 5.5)**, which wrote nearly all of the code, tests and documentation. I
-directed it: we planned each piece before building it, checked in between major pieces, and kept a decisions log
-([docs/decisions.md](docs/decisions.md)) of what we chose and why.
+I used **Claude Code (Sonnet 5.5)** as my only AI tool. It wrote nearly all of the code, tests and documentation;
+I directed it, planned each piece before it was built, and recorded the choices in [docs/decisions.md](docs/decisions.md).
 
-**Output I rejected.** Its first schema priced toppings by a rate held on the topping category (basic 8%, premium
-11%). I rejected that and asked for a price table linked to each menu item, with a type (flat or percentage), so a
-price change is a new row. The same review replaced its natural keys with surrogate ids, its pairwise
-promo-conflict table with a single `exclusive` flag, and its tax setting with an effective-dated tax table.
+**Rejected or fixed.** Its first schema priced toppings by a rate held on the topping category. I rejected that
+for a price table linked to each menu item, so a price change is a new row. Its price lookup compared timestamps
+as text, so a scheduled price change took effect up to a second late; a test caught it and the schema now
+rejects any other timestamp format. Review also flagged one of its assumptions that is still unfixed: a changed
+order is re-priced on today's menu instead of the original one ([next steps](docs/next-steps.md)).
 
-**Output that was wrong.** Its price lookup compared timestamps as text, and `…:00Z` sorts after `…:00.000Z`, so a
-scheduled price change took effect up to a second late. A test it had written caught it, and the fix was to make
-the schema reject any other timestamp format. Separately, its dev setup served stale copies of the pages after they
-were edited.
+**Verified myself.** I clicked through the running app instead of trusting the passing tests, and checked that the
+prices on the order screen match what the brief's rules give. That found a bug the tests missed: the change page
+showed no order, which I traced from the browser's network calls to stale page files. I also entered nine orders
+by hand; the seed script replays them, and tests check it reproduces each to the cent.
 
-**Output review flagged.** It assumed a changed order should be re-priced on the current menu, so an untouched
-pizza could change price. On review I think that is wrong: a change should keep the prices from the order's
-original menu snapshot. It is documented as an AI assumption, not yet fixed.
-
-**What I verified myself rather than trusting.** I clicked through the running app in my browser instead of relying
-on the passing tests (placing, tracking, changing and cancelling orders, and the kitchen screen). That found what
-hundreds of passing tests had not: the change page showed no order. I noticed from the browser's network calls that
-it asked only for the menu and never for the order, which pinned it on stale page files; we fixed that and I
-re-tested it. I also checked that the prices the order screen shows match what I expected from the brief's
-pricing rules, and entered nine orders by hand through the app, covering every status; the seed script replays
-them through the API, and tests check it reproduces each one to the cent.
-
-**Not yet done:** a systematic review of all the code by a person (see [next steps](docs/next-steps.md)).
+A systematic review of all the code by a person has not been done yet.
 
 ## Documentation
 
