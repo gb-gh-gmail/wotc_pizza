@@ -49,7 +49,7 @@ describe('no module depends on itself, directly or through others', () => {
   });
 });
 
-describe('the pricing core (shared with the browser) depends on nothing but itself', () => {
+describe('the pricing core depends on nothing but itself', () => {
   // Allowed imports for each module. Anything else fails, so layers can only point downward.
   const allowed: Record<string, string[]> = {
     'core/money': [],

@@ -10,8 +10,9 @@ Status: **Decided**, **Open** (needs a call), or **Superseded** (kept for histor
 <a id="d1"></a>
 ## D1. Runtime: Node 24 + TypeScript — Decided
 Node 24 LTS (`.nvmrc`), TypeScript, Fastify for the HTTP service, vitest for tests.
-**Why:** one language across the builder UI and the service lets both import the same
-pricing module. Node 26 only just reached LTS; 24 is mature.
+**Why:** one language across the builder UI and the service. (The original plan was for both to import the
+same pricing module; in the end only the service prices an order, see D24 and D26.) Node 26 only just reached
+LTS; 24 is mature.
 
 <a id="d2"></a>
 ## D2. Storage: SQLite via built-in `node:sqlite` — Decided
@@ -377,9 +378,10 @@ promise made on screen.
 `src/core/pricing.ts`: `priceOrder(order, menuSnapshot, promos)` takes one order object and
 returns the complete breakdown: priced lines, subtotal, per-promo outcomes, discount, tax,
 tip and total (or every problem with the order at once). It reads no database, clock or
-network, and writes nothing. **Why:** one place defines what an order costs, so the service
-that charges and the page that displays the running total can use the very same code, and
-it can be tested exhaustively with no setup. Writing the order is the API's job, done only
+network, and writes nothing. **Why:** one place defines what an order costs, so the total
+the customer is shown and the total charged come from the same code, and it can be tested
+exhaustively with no setup. (The core has no server-only dependencies, so the page *could* run it too, but
+today only the service does: the page shows the service's quotes, D26.) Writing the order is the API's job, done only
 after the engine's total has been checked against the one the customer saw (D23).
 
 **Three stages, each its own module and tested on its own.** `priceOrder` only conducts them:

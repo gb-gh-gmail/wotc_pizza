@@ -1,8 +1,8 @@
 /**
  * The pricing engine: one pure function that turns an order and a menu snapshot
  * into a complete, exact breakdown. It is the single source of truth for what an
- * order costs; the order service uses it to charge, and the order builder uses the
- * same code to show the running total, so the two cannot disagree.
+ * order costs. Only the order service runs it: it charges with it, and the totals the
+ * order builder shows are the service's quotes, so the two cannot disagree.
  *
  * It only conducts three stages, each in its own module and tested on its own:
  *

@@ -58,7 +58,12 @@ npm run dev
 ```
 
 That starts both programs with the demo menu loaded (seed data is on in `.env.development`) and
-restarts them when code changes. Stop with Ctrl+C.
+restarts them when code changes. Stop with Ctrl+C. To run them separately, in two terminals:
+
+```
+npm run dev:service     # the order service, http://localhost:3001
+npm run dev:builder     # the order builder, http://localhost:3000
+```
 
 ### Where to go
 
@@ -96,16 +101,54 @@ order's total and status link, and refuses to add to a database that already has
 npm test
 ```
 
-673 test cases run in a few seconds, with nothing to start first. What they check and why, and what they do not
-cover, is in [docs/testing.md](docs/testing.md).
+673 test cases run in a few seconds, with nothing to start first (details in [docs/testing.md](docs/testing.md)).
+
+**Invariants tested, and why:** money is exact (whole cents, one rounding rule, edges like $5.00 tax at 6.5% = 33
+cents) and the total adds up, because errors there are wrong charges; promo rules at their edges (exactly $20.00
+does not qualify for `SAVE5`; the two promos refused in both orders); a price from the browser is never trusted, so
+any mismatch holds the order and writes nothing; the price shown is the price paid, to the millisecond of expiry;
+a retry never places or changes an order twice; the status guard, so a stale cancel or change cannot beat the
+kitchen (both orders tested); writes are all-or-nothing; and the schema enforces what the code assumes.
+
+**Not covered:** two requests at the same instant (the race tests run one after the other, so that guarantee
+rests on SQLite serializing writers); the browser wiring (`app.js` has no automated tests); a real-browser
+end-to-end journey; the order description (not built); every size with every topping through the whole engine; a
+database failing outright; and mutation testing (tests were rarely broken on purpose to prove they fail).
 
 Ports, the database file, logging, the other scripts (resetting the database, running one program
 on its own) and troubleshooting are in [docs/configuration.md](docs/configuration.md).
 
+## The order service API
+
+The restaurant side is simulated by the kitchen screen (`/kitchen`) or the kitchen endpoints below. Money is whole
+cents, and the service prices every order itself from a menu snapshot; the figures the page shows are only a claim
+to compare. Full reference with the real responses: [docs/api.md](docs/api.md).
+
+| Endpoint | What it does |
+|---|---|
+| `GET /menu` | Menu with prices, and a `menuToken` that locks them for 30 minutes |
+| `POST /quote` | Prices an order and compares it with what the page shows (creates nothing) |
+| `POST /orders` | Places an order (needs an `Idempotency-Key`; held with `409` if anything differs) |
+| `GET /orders/:id` | The order's status and contents |
+| `PUT /orders/:id` | Changes an order, only while Not Started |
+| `POST /orders/:id/cancel` | Cancels it, only while Not Started |
+| `GET /kitchen/orders`, `POST /kitchen/orders/:id/advance`, `POST /kitchen/orders/:id/cancel` | The restaurant side: list, move to the next status, cancel |
+
+```
+curl -s -X POST http://localhost:3001/orders -H 'content-type: application/json' \
+  -H 'Idempotency-Key: demo-order-0001' -d '{
+    "menuToken": "<token from GET /menu>",
+    "order": { "lines": [{ "size": "large", "quantity": 1, "toppings": ["pepperoni", "bacon"] }],
+               "tip": { "mode": "percent", "bps": 1800 }, "promoCodes": ["ILOVEPIZZA"] },
+    "claimed": { "totalCents": 1615, "subtotalCents": 1428 } }'
+# 201 {"order":{"id":"…","status":"NOT_STARTED","totalCents":1615,…},"trackPath":"/track/…","replayed":false}
+# the same request again: 200 with "replayed": true, and the same order (a retry places it once)
+```
+
 ## How the code is laid out
 
 ```
-src/core/      The pricing engine: pure functions, no database or network, shared by service and browser
+src/core/      The pricing engine: pure functions, no database or network, used by the order service (the browser never prices an order)
 src/service/   The order service: database, menu snapshots, quote, placing/changing orders, kitchen screen
 src/builder/   The order builder: web pages, and the relay to the order service
 src/lib/       Small shared pieces: logging, start/stop handling, settings

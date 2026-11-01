@@ -1,7 +1,7 @@
 /**
  * The shape of a priced menu, as the pricing engine consumes it and as the order
  * service stores it in a menu snapshot (docs/decisions-detailed.md D23). Plain data: no
- * database, no I/O, so it can be shared with the browser.
+ * database, no I/O.
  */
 import { bpsOf, type Cents } from './money.js';
 
