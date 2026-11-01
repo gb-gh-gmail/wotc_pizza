@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
+import { NO_CACHE, pageFile } from '../../lib/files.js';
 import { cleanReason, reasonSchema, respond } from '../orders/http.js';
 import { cancelOrder, getOrder, type OrderView } from '../orders/repo.js';
 import { ORDER_STATUSES, type OrderStatus } from '../orders/state.js';
@@ -12,6 +12,8 @@ const UI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), 'ui');
 interface Deps {
   db: DatabaseSync;
   now?: () => Date;
+  /** Re-read the page files on every request (development), instead of serving the start-up copy. */
+  reloadUi?: boolean;
 }
 
 /** The customer's view omits kitchen-only detail: customers cannot advance an order. */
@@ -25,13 +27,13 @@ const customerView = (o: object): object => {
  * not been started. Cancelling is double-checked: the page sends the status it
  * last saw, and the service re-reads the real status when the request arrives.
  */
-export function registerCustomer(app: FastifyInstance, { db, now }: Deps): void {
-  const page = readFileSync(resolve(UI_DIR, 'track.html'), 'utf8');
-  const script = readFileSync(resolve(UI_DIR, 'track.js'), 'utf8');
+export function registerCustomer(app: FastifyInstance, { db, now, reloadUi = false }: Deps): void {
+  const page = pageFile(resolve(UI_DIR, 'track.html'), reloadUi);
+  const script = pageFile(resolve(UI_DIR, 'track.js'), reloadUi);
 
   // The page is the same for every order; the script reads the id from the URL.
-  app.get('/track/:id', async (_req, reply) => reply.type('text/html; charset=utf-8').send(page));
-  app.get('/track.js', async (_req, reply) => reply.type('text/javascript; charset=utf-8').send(script));
+  app.get('/track/:id', async (_req, reply) => reply.header('cache-control', NO_CACHE).type('text/html; charset=utf-8').send(page()));
+  app.get('/track.js', async (_req, reply) => reply.header('cache-control', NO_CACHE).type('text/javascript; charset=utf-8').send(script()));
 
   app.get<{ Params: { id: string } }>('/orders/:id', async (req, reply) => {
     const order = getOrder(db, req.params.id, 'customer');

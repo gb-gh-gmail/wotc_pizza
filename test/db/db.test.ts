@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -85,6 +86,39 @@ describe('persistence across restarts', () => {
     db.close();
 
     expect(() => openDatabase({ path })).toThrow(/newer than this build/);
+  });
+});
+
+describe('a database from an older schema', () => {
+  let dir: string | undefined;
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  it('is refused with a message that says what to do, instead of half-starting', () => {
+    dir = mkdtempSync(join(tmpdir(), 'pizza-db-'));
+    const path = join(dir, 'orders.db');
+    const db = openDatabase({ path });
+    db.exec('PRAGMA user_version = 1'); // as if created by an older build
+    db.close();
+
+    expect(() => openDatabase({ path })).toThrow(/schema version 1 but this build needs version \d+.*npm run db:reset/s);
+  });
+});
+
+describe('schema changes must come with a version bump', () => {
+  // The database is stamped with SCHEMA_VERSION and an older file is refused. If schema.sql
+  // changed but the version did not, an existing database would start with missing tables
+  // (this has happened). So the schema's fingerprint is pinned next to the version it belongs to.
+  // When this fails: bump SCHEMA_VERSION in src/service/db.ts, then update the two values below.
+  const PINNED = { version: 3, sha256: '52b5dcb5fcd0cc11ffd2a57d9f4afb7435db7bf077ececd5330ed703d9c6cce3' };
+
+  it('schema.sql still matches the version it is pinned to', () => {
+    const text = readFileSync(new URL('../../db/schema.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    const sha256 = createHash('sha256').update(text).digest('hex');
+
+    expect({ version: SCHEMA_VERSION, sha256 }).toEqual(PINNED);
   });
 });
 

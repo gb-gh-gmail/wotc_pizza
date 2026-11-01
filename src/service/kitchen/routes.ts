@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
+import { NO_CACHE, pageFile } from '../../lib/files.js';
 import { respond, cleanReason, reasonSchema } from '../orders/http.js';
 import { advanceOrder, cancelOrder, listOrders } from '../orders/repo.js';
 import { ORDER_STATUSES, type OrderStatus } from '../orders/state.js';
@@ -12,19 +12,21 @@ const UI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), 'ui');
 interface Deps {
   db: DatabaseSync;
   now?: () => Date;
+  /** Re-read the page files on every request (development), instead of serving the start-up copy. */
+  reloadUi?: boolean;
 }
 
 /**
  * The restaurant side: a screen showing incoming orders, and the actions the
  * kitchen takes on them (advance to the next status, or cancel with a reason).
  */
-export function registerKitchen(app: FastifyInstance, { db, now }: Deps): void {
-  // Read once at start-up; a missing file fails fast rather than on first request.
-  const page = readFileSync(resolve(UI_DIR, 'kitchen.html'), 'utf8');
-  const script = readFileSync(resolve(UI_DIR, 'kitchen.js'), 'utf8');
+export function registerKitchen(app: FastifyInstance, { db, now, reloadUi = false }: Deps): void {
+  // A missing file fails at start-up rather than on first request.
+  const page = pageFile(resolve(UI_DIR, 'kitchen.html'), reloadUi);
+  const script = pageFile(resolve(UI_DIR, 'kitchen.js'), reloadUi);
 
-  app.get('/kitchen', async (_req, reply) => reply.type('text/html; charset=utf-8').send(page));
-  app.get('/kitchen/kitchen.js', async (_req, reply) => reply.type('text/javascript; charset=utf-8').send(script));
+  app.get('/kitchen', async (_req, reply) => reply.header('cache-control', NO_CACHE).type('text/html; charset=utf-8').send(page()));
+  app.get('/kitchen/kitchen.js', async (_req, reply) => reply.header('cache-control', NO_CACHE).type('text/javascript; charset=utf-8').send(script()));
 
   app.get<{ Querystring: { include?: string } }>(
     '/kitchen/orders',

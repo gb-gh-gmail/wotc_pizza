@@ -42,6 +42,14 @@ export function canCancel(status: OrderStatus, actor: Actor): boolean {
   return !isTerminal(status);
 }
 
+/**
+ * Whether `actor` may change what is in the order (its pizzas, tip, promos). Only the customer, and
+ * only before the kitchen starts: the same window as cancelling, for the same reason.
+ */
+export function canEdit(status: OrderStatus, actor: Actor): boolean {
+  return actor === 'customer' && status === 'NOT_STARTED';
+}
+
 export function isOrderStatus(value: unknown): value is OrderStatus {
   return typeof value === 'string' && (ORDER_STATUSES as readonly string[]).includes(value);
 }

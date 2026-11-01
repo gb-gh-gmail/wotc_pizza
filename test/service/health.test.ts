@@ -33,6 +33,12 @@ describe('loadConfig', () => {
     expect(loadConfig({})).toMatchObject({ host: '127.0.0.1', port: 3001, dbPath: 'data/orders.db', seedDb: false });
   });
 
+  it('re-reads page files on every request unless told not to (a stale page cost a debugging session)', () => {
+    expect(loadConfig({}).uiReload).toBe(true);
+    expect(loadConfig({ UI_RELOAD: 'true' }).uiReload).toBe(true);
+    expect(loadConfig({ UI_RELOAD: 'false' }).uiReload).toBe(false);
+  });
+
   it('reads overrides and rejects bad numbers', () => {
     expect(loadConfig({ PORT: '8080', HOST: '0.0.0.0', DB_PATH: ':memory:', SEED_DB: 'true' })).toMatchObject({
       host: '0.0.0.0',

@@ -35,9 +35,14 @@ export function insertOrder(db: DatabaseSync, o: TestOrder = {}): string {
     (db.prepare(`SELECT id FROM prices WHERE menu_item_id = ?`).get(menuItemId) as { id: number }).id;
 
   runInTransaction(db, () => {
+    // Every order points at the snapshot it was priced against; a stub is enough for these tests.
     db.prepare(
-      `INSERT INTO orders (id, status, menu_id, subtotal_cents, tax_rate_id, tax_cents, total_cents, created_at, updated_at)
-       VALUES (?, ?, (SELECT id FROM menus LIMIT 1), 1000, (SELECT id FROM tax_rates LIMIT 1), 65, 1065, ?, ?)`,
+      `INSERT OR IGNORE INTO menu_snapshots (token, menu_id, content_hash, data, created_at, expires_at)
+       VALUES ('test-snapshot', (SELECT id FROM menus LIMIT 1), 'test', '{}', '2026-03-01T00:00:00.000Z', '2026-03-01T00:30:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO orders (id, status, menu_id, menu_snapshot_token, subtotal_cents, tax_rate_id, tax_cents, total_cents, created_at, updated_at)
+       VALUES (?, ?, (SELECT id FROM menus LIMIT 1), 'test-snapshot', 1000, (SELECT id FROM tax_rates LIMIT 1), 65, 1065, ?, ?)`,
     ).run(id, o.status ?? 'NOT_STARTED', createdAt, createdAt);
 
     lines.forEach((line, position) => {

@@ -6,8 +6,12 @@ import type { Logger } from '../lib/logger.js';
 
 const DB_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../db');
 
-/** Bump when schema.sql changes incompatibly; see docs/decisions.md D2. */
-export const SCHEMA_VERSION = 1;
+/**
+ * Bump whenever schema.sql changes at all; see docs/decisions.md D2 and D19. There are no
+ * migrations yet, so a database created by an older schema is refused (with instructions)
+ * rather than half-started. A test fails if schema.sql changes without this being bumped.
+ */
+export const SCHEMA_VERSION = 3;
 
 export interface OpenDatabaseOptions {
   /** File path, or ':memory:' for tests. */
@@ -55,7 +59,10 @@ function applySchema(db: DatabaseSync, logger?: Pick<Logger, 'info'>): void {
   }
   if (current !== 0) {
     // No migrations exist yet; refuse rather than guess at an upgrade.
-    throw new Error(`no migration from schema version ${current} to ${SCHEMA_VERSION}`);
+    throw new Error(
+      `this database has schema version ${current} but this build needs version ${SCHEMA_VERSION}, and there is no migration. ` +
+        `For a development database, recreate it with "npm run db:reset" (this deletes its data).`,
+    );
   }
 
   logger?.info(`applying schema v${SCHEMA_VERSION}`);

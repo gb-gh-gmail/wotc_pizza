@@ -1,3 +1,4 @@
+import { intFrom } from '../lib/env.js';
 import { parseLogLevel, type LogLevel } from '../lib/logger.js';
 
 export interface ServiceConfig {
@@ -10,6 +11,8 @@ export interface ServiceConfig {
   dbPath: string;
   /** Load the demo menu/promos/tax into an empty database on start-up. */
   seedDb: boolean;
+  /** Re-read the page files on every request (development), instead of serving the start-up copy. */
+  uiReload: boolean;
 }
 
 /** Read configuration from the environment, with safe local defaults. */
@@ -23,14 +26,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
     logPretty: env.LOG_PRETTY === 'true',
     dbPath: env.DB_PATH || 'data/orders.db',
     seedDb: env.SEED_DB === 'true',
+    // On unless explicitly turned off: serving a stale page costs far more than re-reading a small file.
+    uiReload: env.UI_RELOAD !== 'false',
   };
-}
-
-function intFrom(raw: string | undefined, fallback: number, name: string): number {
-  if (raw === undefined || raw === '') return fallback;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 0) {
-    throw new Error(`${name} must be a non-negative integer, got "${raw}"`);
-  }
-  return n;
 }

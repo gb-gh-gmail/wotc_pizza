@@ -137,6 +137,8 @@ describe('status page', () => {
     expect(page.headers['content-type']).toMatch(/text\/html/);
     expect(page.body).toContain('Your order');
     expect(page.body).toContain('/track.js');
+    // A way back to start a new order, always on the page (it sits outside the order card, which stays hidden if the order is not found).
+    expect(page.body).toMatch(/<p class="newOrder"><a id="newOrder" href="\/">Place a new order<\/a><\/p>/);
 
     const js = await app.inject({ method: 'GET', url: '/track.js' });
     expect(js.statusCode).toBe(200);
