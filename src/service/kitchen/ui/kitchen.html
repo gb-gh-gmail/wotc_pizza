@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kitchen orders</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f6f4f0; --card:#fff; --text:#1d1b19; --muted:#6b645c; --line:#ddd6cc;
+            --accent:#b3361b; --ok:#2b7a3d; --warn:#9a6700; --off:#8a847c; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#161412; --card:#221f1c; --text:#f1ece6; --muted:#a79f95; --line:#38332e; --accent:#e5694f; --ok:#5fb572; --warn:#e0b04a; --off:#8f877d; }
+    }
+    body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, sans-serif; }
+    header { display:flex; flex-wrap:wrap; gap:.75rem 1.5rem; align-items:center; max-width:60rem; margin:0 auto 1rem; }
+    h1 { font-size:1.25rem; margin:0; flex:1 1 auto; }
+    label { color:var(--muted); font-size:.9rem; }
+    #status { color:var(--muted); font-size:.85rem; }
+    #error { max-width:60rem; margin:0 auto 1rem; padding:.6rem .8rem; border:1px solid var(--accent); border-radius:.4rem; color:var(--accent); }
+    #orders { max-width:60rem; margin:0 auto; display:grid; gap:.75rem; padding:0; list-style:none; }
+    .order { background:var(--card); border:1px solid var(--line); border-radius:.5rem; padding:.8rem 1rem; }
+    .order.closed { opacity:.7; }
+    .top { display:flex; flex-wrap:wrap; gap:.4rem 1rem; align-items:baseline; }
+    .badge { font-weight:600; font-size:.8rem; padding:.1rem .5rem; border-radius:1rem; border:1px solid currentColor; }
+    .NOT_STARTED { color:var(--warn); } .STARTED { color:var(--accent); } .READY_FOR_PICKUP { color:var(--ok); }
+    .DELIVERED, .CANCELLED { color:var(--off); }
+    .when { color:var(--muted); font-size:.85rem; }
+    .id { color:var(--muted); font:.8rem ui-monospace, monospace; margin-left:auto; }
+    ul.items { margin:.5rem 0; padding-left:1.2rem; }
+    .topping { color:var(--muted); }
+    .reason { margin:.4rem 0; color:var(--muted); font-style:italic; }
+    .actions { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-top:.5rem; }
+    button { font:inherit; padding:.4rem .9rem; border-radius:.35rem; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer; }
+    button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    button.danger { color:var(--accent); border-color:var(--accent); }
+    button:disabled { opacity:.5; cursor:default; }
+    input[type=text] { font:inherit; padding:.4rem .5rem; border:1px solid var(--line); border-radius:.35rem; background:var(--card); color:var(--text); flex:1 1 14rem; }
+    .empty { text-align:center; color:var(--muted); padding:2rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Kitchen orders</h1>
+    <label><input type="checkbox" id="showClosed"> Show delivered &amp; cancelled</label>
+    <span id="status" role="status"></span>
+  </header>
+  <div id="error" role="alert" hidden></div>
+  <ul id="orders"></ul>
+  <script src="/kitchen/kitchen.js"></script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your order</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f6f4f0; --card:#fff; --text:#1d1b19; --muted:#6b645c; --line:#ddd6cc;
+            --accent:#b3361b; --ok:#2b7a3d; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#161412; --card:#221f1c; --text:#f1ece6; --muted:#a79f95; --line:#38332e; --accent:#e5694f; --ok:#5fb572; }
+    }
+    body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font:16px/1.45 system-ui, sans-serif; }
+    main { max-width:34rem; margin:0 auto; }
+    h1 { font-size:1.3rem; margin:.2rem 0 .1rem; }
+    .sub { color:var(--muted); font-size:.85rem; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:.5rem; padding:1rem; margin-top:1rem; }
+    #headline { font-size:1.25rem; font-weight:600; margin:0 0 .75rem; }
+    ol.steps { display:flex; gap:.25rem; list-style:none; padding:0; margin:0 0 .5rem; }
+    ol.steps li { flex:1; text-align:center; font-size:.75rem; color:var(--muted); padding-top:.5rem; border-top:4px solid var(--line); }
+    ol.steps li.done { border-top-color:var(--ok); color:var(--text); }
+    ol.steps li.current { border-top-color:var(--accent); color:var(--text); font-weight:600; }
+    ol.steps.cancelled li { border-top-color:var(--line); opacity:.5; }
+    ul.items { margin:.25rem 0; padding-left:1.2rem; } .topping { color:var(--muted); }
+    .reason { color:var(--muted); font-style:italic; }
+    .actions { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.75rem; align-items:center; }
+    button { font:inherit; padding:.45rem 1rem; border-radius:.35rem; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer; }
+    button.danger { color:var(--accent); border-color:var(--accent); } button:disabled { opacity:.5; cursor:default; }
+    input[type=text] { font:inherit; padding:.45rem .5rem; border:1px solid var(--line); border-radius:.35rem; background:var(--card); color:var(--text); flex:1 1 12rem; }
+    #error { margin-top:1rem; padding:.6rem .8rem; border:1px solid var(--accent); border-radius:.4rem; color:var(--accent); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Your order</h1>
+    <div class="sub"><span id="orderId"></span> · <span id="checked" role="status"></span></div>
+    <div id="error" role="alert" hidden></div>
+    <div class="card" id="card" hidden>
+      <p id="headline"></p>
+      <ol class="steps" id="steps"></ol>
+      <ul class="items" id="items"></ul>
+      <div class="reason" id="reason"></div>
+      <div class="actions" id="actions"></div>
+    </div>
+  </main>
+  <script src="/track.js"></script>
+</body>
+</html>
