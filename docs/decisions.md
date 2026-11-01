@@ -622,3 +622,16 @@ which is the main thing a real browser catches. Turning the real-browser checks 
 is the first item under "Order builder UI" in `next-steps.md`.
 **How to tell what is running.** The servers' own start times (`Get-CimInstance Win32_Process`) and
 the page text itself ("Change your order" at `/change/<id>`) show whether a process predates an edit.
+
+## D32. The order description (brief requirement 3) is not implemented: cut for time — Decided
+The brief asks that, on request, the program produces a written description of the order with
+quantity, size and the list of toppings for each line item. **It is not built.** The assessment says
+to prioritize correct pricing and a defensible order lifecycle over breadth, and that an honest cut list
+beats a broken feature; with the time available, effort went to exact pricing, the price lock, safe
+retries, and placing, changing and cancelling orders without them being able to corrupt each other.
+**Why this was the right thing to cut:** it is presentation only, it touches no pricing, no stored data and
+no order lifecycle, so it can be added later with no risk to anyone's money. Everything it needs is
+already available: the order API returns each line's quantity, size and toppings with their menu labels,
+and every page already shows an order's contents. What is missing is a function that writes them out as
+text on request, the button that asks for it, and the same text in the API. The plan is the first entry
+in `docs/next-steps.md`, and the cut is stated in the README so it is not mistaken for an oversight.

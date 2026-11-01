@@ -4,6 +4,8 @@ Things deliberately left out to stay in the timebox, or planned for later. This 
 [README](../README.md)): it is a basic system that works end to end, with the fixes and
 enhancements that would take it further listed here.
 
+- **Missing requirement** is anything the brief asks for that is not built. There is one.
+- **Full code review** (by AI and by a person) comes straight after it.
 - **Known issues to fix** are things that are wrong or weak today.
 - **Error handling, transitions and data integrity** is the first follow-up. A basic version is in
   this revision; the fuller version is a secondary concern to the core ordering and pricing the
@@ -11,6 +13,78 @@ enhancements that would take it further listed here.
 - **Enhancements** are future provisioning: ideas that were taken into account while shaping the
   schema and the system, some partly provisioned, none fully built.
 - The sections after that are smaller items that were cut or would come next.
+
+## Missing requirement: the order description (not implemented, due to time)
+
+**The brief (requirement 3):** *"On request, the program produces a written description of the order
+including quantity, size, and the list of toppings for each line item."*
+
+**Status: not implemented.** It was cut to stay within the timebox, in favour of what the assessment
+puts first: correct pricing and a defensible order lifecycle. It is the one requirement in the brief
+that is not met. (The other requirements, 1, 2 and 4 to 6, are built. Requirement 6 also asks for an
+explanation of the extensibility design in the write-up, which is still to be written.)
+
+**What exists today.** A customer can *see* what is in their order: the order page shows each pizza
+with its quantity, size, toppings and price as it is built, the change page opens with "Your order
+right now", the status page lists the items, and the kitchen screen lists each order's contents. What
+does not exist is a written description produced *on request*: no "Describe my order" action, and no
+description text in the API.
+
+**What it would take (small; the data is already there).** The order API already returns every line's
+quantity, size and toppings, with their menu labels.
+- A pure function, `describeOrder(lines)`, in `src/core`, returning plain text in the shape of
+  *"2 × Large pizza with Pepperoni and Bacon; 1 × Small pizza with no toppings"*, with the wording
+  rules settled (no toppings, one, two, several; quantity of one against more than one; the menu's
+  own labels).
+- The same text returned in the API's order and quote responses as a `description`, so any client can
+  show it.
+- A **Describe my order** button on the order page and the change page that shows the text (and lets
+  the customer copy it), and the same text on the status page.
+- Unit tests for the wording and its edge cases, and a check through the API.
+
+**Why it was safe to defer.** It is presentation only: it does not touch pricing, the order lifecycle or
+anything stored, so adding it later cannot put a customer's money at risk.
+
+## Full code review, by AI and by a person (not yet done)
+
+**Status: not done.** Most of this code was written with AI assistance. It has been checked by 673
+automated tests, by exercising the running system (including in a real browser), and by the author trying
+the app by hand and finding real faults that way. What has not happened is a **systematic review of the
+whole codebase**, read critically, by anyone. That is the next piece of verification, and it is what turns
+"it passes its tests" into "it has been read and is believed correct."
+
+**Approach: two independent reviews, then compare.**
+1. **An AI review with fresh context.** A reviewer that did not help write the code and has no memory of
+   the reasoning behind it, so it cannot simply agree with the design. It is asked to find bugs, risky
+   assumptions and drift between the docs and the code, not to comment on style.
+2. **A person reading the same code.** Focused on what AI-written code tends to get wrong: logic that is
+   plausible but subtly wrong; confident comments that no longer match what the code does; more machinery
+   than the problem needs; and tests that assert what the code *does* rather than what it *should* do.
+3. **Compare the two.** A problem both find is real. A problem only one finds is investigated, not assumed.
+   Each finding is written down with its severity and outcome (fixed, accepted with a reason, or not a
+   problem), and the docs are corrected where the review shows them to be wrong.
+
+**Scope** (about 5,200 lines of source, scripts and SQL, and 5,000 lines of tests), in priority order:
+- **The money and ordering paths first:** `src/core` (pricing, promos, totals: 676 lines), the order
+  service's placing, changing and quoting (`src/service/orders`, `src/service/quote`), menu snapshots, and
+  the schema's constraints and triggers. Rounding at the boundaries, promo exclusivity and thresholds, the
+  price lock, and what exactly is written in one transaction.
+- **Concurrency and retries:** every transaction boundary, every conditional update, the idempotency
+  fingerprint and its replays. This is where "tested one request after another" could hide a gap.
+- **Error paths:** what a client receives when something fails (the known leak of internal messages is in
+  the error-handling section), unhandled promise rejections, and failure half-way through a write.
+- **The browser code**, especially `src/builder/ui/app.js` (848 lines, the largest file, whose wiring has
+  no automated tests): the state machine, stale or overlapping answers, focus and dialogs.
+- **Queries and schema:** confirm every query uses bound parameters and that the schema's constraints match
+  what the code assumes.
+- **Docs against code:** every claim in `decisions.md`, `assumptions.md`, `configuration.md` and the README
+  checked against what the code actually does.
+- **The tests themselves:** do they fail when they should? Break a rule on purpose (a mutation check, as
+  was done once for the layering test) and confirm a test notices.
+- **Dependencies and configuration:** what is installed and why, and the defaults.
+
+**Outcome:** written review notes with the findings and what was done about each, the fixes themselves, and
+corrected docs. It also feeds the AI usage note: what the AI got wrong, and how it was caught.
 
 ## Known issues to fix
 

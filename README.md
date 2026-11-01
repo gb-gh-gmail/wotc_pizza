@@ -34,6 +34,12 @@ What that means in practice:
   ordering paths, where the assessment puts the emphasis, but a fuller system-wide version is not
   built, and security hardening is deferred (see the decisions log). Wider error handling, data
   integrity checks and database migrations are the first follow-ups in the next-steps list.
+- **One requirement from the brief is not implemented: the written order description** (requirement 3,
+  "on request, a written description of the order including quantity, size and toppings for each line
+  item"). It was cut for time, in favour of pricing correctness and the order lifecycle. Customers can
+  see their order's contents on every page, but nothing produces a written description on request. The
+  data it needs is already returned by the API, and the plan is in
+  [docs/next-steps.md](docs/next-steps.md#missing-requirement-the-order-description-not-implemented-due-to-time).
 - **Known gaps are written down, not hidden.** Fixes, enhancements and anything cut to stay in the
   timebox are listed in [docs/next-steps.md](docs/next-steps.md), including the known issues to fix first.
 
