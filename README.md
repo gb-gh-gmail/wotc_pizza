@@ -260,13 +260,12 @@ I directed it, planned each piece before it was built, and recorded the choices 
 **Rejected or fixed.** Its first schema priced toppings by a rate held on the topping category. I rejected that
 for a price table linked to each menu item, so a price change is a new row. Its price lookup compared timestamps
 as text, so a scheduled price change took effect up to a second late; a test caught it and the schema now
-rejects any other timestamp format. Review also flagged one of its assumptions that is still unfixed: a changed
-order is re-priced on today's menu instead of the original one ([next steps](docs/next-steps.md)).
+rejects any other timestamp format. Review also caught an assumption still unfixed: a changed order is priced on
+today's menu, not the original ([next steps](docs/next-steps.md)).
 
 **Verified myself.** I clicked through the running app instead of trusting the passing tests, and checked that the
 prices on the order screen match what the brief's rules give. That found a bug the tests missed: the change page
-showed no order, which I traced from the browser's network calls to stale page files. I also entered nine orders
-by hand; the seed script replays them, and tests check it reproduces each to the cent.
+showed no order, which I traced from the browser's network calls to stale page files.
 
 A systematic review of all the code by a person has not been done yet.
 
