@@ -28,11 +28,14 @@ cannot be corrupted by two things happening at once. Everything around it is kep
 What that means in practice:
 - **Basic by design:** no login or accounts, no real payments, no real kitchen integration (the
   kitchen advances orders by hand on its screen), a simple web interface, and a single local database.
-- **Not production-ready:** error handling is thorough in the pricing and ordering paths but not
-  yet system-wide, and security hardening is deferred (see the decisions log).
+  It is also not containerized yet: Docker was considered for a finalized version but is a
+  lower-priority secondary piece, planned for after this proof of concept.
+- **Not production-ready:** basic error handling is in place and is thorough in the pricing and
+  ordering paths, where the assessment puts the emphasis, but a fuller system-wide version is not
+  built, and security hardening is deferred (see the decisions log). Wider error handling, data
+  integrity checks and database migrations are the first follow-ups in the next-steps list.
 - **Known gaps are written down, not hidden.** Fixes, enhancements and anything cut to stay in the
-  timebox are listed in [docs/next-steps.md](docs/next-steps.md), including two reported issues still
-  to be confirmed in a real browser.
+  timebox are listed in [docs/next-steps.md](docs/next-steps.md), including the known issues to fix first.
 
 ## What it does
 
@@ -71,10 +74,27 @@ restarts them when code changes. Stop with Ctrl+C.
 | Menu with prices, as JSON | http://localhost:3001/menu |
 | Health checks | http://localhost:3001/health, http://localhost:3000/health |
 
-A quick way to try it: open the customer URL, add a pizza, press **Check my total**, then **Place
-order**. Open the kitchen screen in a second tab and press **Start cooking** to watch the customer's
+A quick way to try it: open the customer URL, add toppings (the total updates as you change the
+order), then press **Place order**. Open the kitchen screen in a second tab and press **Start cooking** to watch the customer's
 status page follow along. There is no login: the brief says authentication is out of scope, so the
 kitchen screen is open to anyone who can reach the service.
+
+### Sample orders
+
+To try the kitchen screen and the status pages with something on them, place a set of sample orders
+while the service is running:
+
+```
+npm run seed:orders
+```
+
+It places nine orders by calling the order service the way a customer and the kitchen would (so
+every order goes through the real pricing and checks), and leaves them in every state: not started,
+started, ready for pickup, delivered and cancelled. They are real orders that were entered by hand
+through the app, and they include both promo codes, both kinds of tip, an order that was changed
+and then cancelled, kitchen cancellations at two stages, and a very large tip that needs confirming. It prints each order's
+status, total and a link to its status page. It refuses to add to a database that already has orders;
+start clean with `npm run db:reset`, or add anyway with `npm run seed:orders -- --add`.
 
 ### Running the tests
 
