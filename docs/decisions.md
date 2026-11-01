@@ -235,6 +235,15 @@ changes after release.
 - `runInTransaction` uses `BEGIN IMMEDIATE`, taking the write lock up front so a
   read-then-write (such as "cancel only if still Not Started") can't be interleaved by
   another writer.
+- **Every schema change bumps `SCHEMA_VERSION`, and a test enforces it.** Because there are no
+  migrations yet, the schema is edited in place during development. Once, a change (the
+  `menu_snapshots` table) was made without a bump; an existing dev database was stamped with
+  the old version, so the service skipped the new tables and failed at start with a cryptic
+  "no such table". `db.test.ts` now pins the SHA-256 of `schema.sql` to the version it belongs
+  to and fails if they drift apart, with instructions. An out-of-date database is refused with
+  a message that says what to do, and `npm run db:reset` deletes the dev database (it also
+  removes the SQLite `-wal` / `-shm` files) so the next start recreates and reseeds it.
+  Real migrations are the answer once data has to survive a schema change (see next-steps).
 **Config:** `DB_PATH` (default `data/orders.db`, git-ignored), `SEED_DB`.
 
 ## D20. Kitchen screen on the order service, with an optional cancellation reason — Decided
@@ -282,6 +291,9 @@ and a **Cancel order…** button only while the server says the customer may can
 - **Polling stops for orders in a final status** (Delivered or Cancelled), since nothing can
   change, and for an order that doesn't exist. Otherwise it polls every 3s.
 - The customer view omits kitchen-only fields (`nextStatus`).
+- **A "Place a new order" link is always on the page** (it sits outside the order card), in every
+  state: in progress, delivered, cancelled, and when the order is not found, so a customer is never
+  left at a dead end. It goes to `/`, which the builder serves.
 - The customer-facing UI that builds orders is the separate order builder; this page is the
   status-check part and works with just an order ID.
 - **No authentication or hardening** on `/kitchen`, per the brief ("No auth required").
@@ -300,7 +312,297 @@ transitions.
 kitchen routes (or a separate internal port), response security headers including a CSP,
 rate limiting on order submission, and a review of logged fields.
 
-## D23. Retries are made safe with client-supplied idempotency keys — Decided
-`POST /orders` takes an `Idempotency-Key`. The same key and body return the original
-order; the same key with a different body gets 422. **Why:** mobile clients time out and
-retry, and a duplicate order is a real cost to the restaurant.
+## D23. Submitted prices are validated against the menu the customer was shown — Decided
+When an order is submitted, the service verifies its prices against **the menu that was
+presented to that customer**, not against whatever the back-end prices are at the moment of
+submission. A price change made in the meantime does not apply to an order built from the
+earlier menu.
+
+**Why:** the customer must never be charged something different from what they were told.
+The brief requires that the total shown while building matches the total the restaurant
+charges. Back-end prices can change at any moment (the schema is built for scheduled
+changes), and a customer can spend several minutes building an order, so checking against
+"current" prices would let a price change turn an honest order into a surprise charge or a
+rejection the customer cannot explain. Validating against the presented menu keeps the
+promise made on screen.
+
+**Mechanism** (details confirmed; the expiry setting and the timer are in D25):
+- `GET /menu` records a **menu snapshot** on the order service, stored in the database and
+  not in the builder or the browser, because only the service can say what it showed. The
+  snapshot holds the resolved prices, the menu id, the tax rate in effect, and an expiry. The
+  client receives only an opaque GUID (`menuToken`) and sends it back with the order.
+- `POST /orders` prices the order from that snapshot, then compares its total with the total
+  the customer saw. It never trusts prices sent by the client; the client's numbers are only
+  a claim to check.
+- **Disagreement is communicated, not hidden:** items that are not on the presented menu get
+  a 422 naming them; a total that differs gets a 409 `price_mismatch` with the
+  authoritative line-by-line quote; an expired or unknown token gets a 409 `menu_expired`
+  with a fresh quote and token. In every case no order is created, and the customer confirms
+  the corrected prices before the order is accepted. The service never silently charges a
+  different amount than the customer saw.
+- Snapshot reuse: an identical, unexpired snapshot is reused so the table doesn't grow with
+  every page load.
+- The submit is idempotent (D24), so a timeout-and-retry cannot create two orders.
+- **Confirmed defaults:** the snapshot stores the resolved prices as JSON (immune to later
+  edits of a price row); the tax rate is locked in the snapshot; promo codes are checked live
+  at submit; an expired token returns a fresh quote for the customer to confirm.
+
+## D24. The pricing engine is one pure function; promos are their own module — Decided
+`src/core/pricing.ts`: `priceOrder(order, menuSnapshot, promos)` takes one order object and
+returns the complete breakdown: priced lines, subtotal, per-promo outcomes, discount, tax,
+tip and total (or every problem with the order at once). It reads no database, clock or
+network, and writes nothing. **Why:** one place defines what an order costs, so the service
+that charges and the page that displays the running total can use the very same code, and
+it can be tested exhaustively with no setup. Writing the order is the API's job, done only
+after the engine's total has been checked against the one the customer saw (D23).
+
+**Three stages, each its own module and tested on its own.** `priceOrder` only conducts them:
+1. `lines.ts` `priceLines`: validate the lines and price them → subtotal.
+2. `promos.ts` `applyPromos`: apply promo codes to that priced order → discount.
+3. `totals.ts` `computeTotals`: tax on the discounted amount, then tip, then total; plus
+   `checkTip` (tip validation) and `inconsistencies`, the final check that the breakdown adds
+   up (lines sum to the subtotal, total = taxable + tax + tip, nothing negative or fractional).
+   The engine runs that check on every result and throws rather than return a price that does
+   not add up; it can only fire through a bug in a stage, never through customer input.
+
+Shared input types, limits and issue types live in `order.ts` so no stage imports another.
+**Why split:** each stage has rules likely to change (promo stacking, tax, tip) and each can
+be tested directly and exhaustively instead of only through whole orders. Money rounding stays
+in one helper (D9).
+
+**Promo strategies receive a copy of the priced order** (`PromoOrder`: the subtotal and every
+priced line with its size, toppings, unit and line prices), a fresh `structuredClone` per
+strategy call. **Why:** it lets a line-specific promo ("$2 off every large pizza") be a
+registered strategy with no engine change, while a strategy can neither alter the real order
+nor affect the next promo. The generic rules (minimum subtotal, exclusivity, cap at the
+subtotal) apply to every kind, including line-specific ones.
+
+- **A promo that doesn't apply is not an error.** It comes back with a customer-facing
+  message ("SAVE5 needs an order over $20.00 before tax"; "SAVE5 cannot be combined with
+  ILOVEPIZZA") and the order still prices, so the running total can say why.
+- **Invalid orders are all reported at once** (bad quantity, unknown size or topping, a
+  topping twice on one pizza, an unusable tip), each with its location, instead of one at a
+  time.
+- **The engine tolerates any input shape** and reports problems rather than throwing,
+  because its input comes from an API.
+- **Extensibility:** a new size, topping or category is menu data; a new promo of an existing
+  kind is a database row; a new promo kind is one entry in the kinds table.
+
+## D25. Menu snapshots, with the expiry in a database setting — Decided
+`GET /menu` returns the prices plus `menuToken`, `expiresAt` and `serverTime`. The prices are
+stored as JSON in `menu_snapshots`; each order records the snapshot it was priced against.
+- **Expiry is a database setting**, `user_menu_expiry_seconds` (default 1800 = 30 minutes), in
+  a new `settings` table seeded by `schema.sql` (the service cannot work without it). It can
+  be changed at run time with no deploy. A missing or out-of-range value (under 60 seconds or
+  over a day) makes the menu unavailable rather than silently using a guess.
+- **The customer is shown the deadline.** The page displays the time left, counting down
+  against `serverTime` so a wrong device clock can't skew it, and opens a "session timed out"
+  dialog when it passes.
+- **Snapshots are shared** between customers loading identical prices while at least 5/6 of
+  the window remains, so everyone gets nearly the full time and the table grows by at most one
+  row per few minutes. Content is hashed without `pricedAt` so identical menus match.
+- **A snapshot an order refers to is never deleted.** Expired, unreferenced ones are purged
+  at start-up.
+- **Why a settings table again:** an early draft had one and it was removed while tax had no
+  home; tax became its own effective-dated table (D10), and this value is genuinely a
+  tunable setting.
+
+## D26. One quote path; promos re-validated on every request; any difference holds the order — Decided
+`POST /quote` (service: `quoteOrder`) prices an order exactly as it would be charged and
+compares it with the figures the page is showing. Placing the order (later) uses the same
+`quoteOrder`, so a running total and a charge cannot come from different code.
+
+- **A single path, with the promo work done only when promo codes are present.** There is no
+  separate "apply promo" call. Adding a promo code is a quote request with that code included.
+  Validating a code is stage 2 of the engine (D24), so one request answers both "is this code
+  valid?" and "what is the new price?". When a promo actually applies, the breakdown also
+  carries `withoutPromo` (tax, tip and total with no discount) using the same totals stage with
+  a discount of zero; with no promo applied it is `null` and nothing extra is computed.
+- **No circular dependency, enforced.** Layers only call downward: routes → `quoteOrder` →
+  `priceOrder` → the three stages. `applyPromos` knows nothing about quotes. A test
+  (`architecture.test.ts`) fails on any import cycle in `src/`, on any core module importing
+  something its layer shouldn't, and on a routes module being imported by anything but `app.ts`.
+  It was verified by introducing a deliberate cycle and watching it fail.
+- **Promos are re-validated from scratch on every quote and every order.** The service keeps
+  no "applied promo" state: the client re-sends its codes and each is checked against the promos
+  as they are *now* (active flag, start/end window, exclusivity) and the order as it is *now*
+  (a minimum subtotal). A promo that is switched off, expires, or stops qualifying because the
+  customer changed their order is refused with a reason, even if it applied a moment ago.
+  Promo rules are read live; menu prices stay locked to the snapshot (D23).
+- **Any difference between what the page showed and what the service computes holds the order
+  until the customer re-confirms.** A different price, a different total and a promo that no
+  longer applies are all the same situation. The response carries the corrected figures and what
+  changed; the page removes a refused code from the promo box and shows an information message
+  that includes the reason and the updated price. Nothing is created until they confirm.
+  `compareClaimed` (`core/claims.ts`) lists the differences in plain language ("Total: you were
+  shown $15.98, but it is $21.30"). At quote time a mismatch is informational (`matches: false`);
+  at order time it is a 409 and no order is written.
+- **The snapshot is built and checked before anything is stored or sent.** The service
+  resolves every price and the tax rate from live data first; inconsistent data (an item with
+  no price or two prices, no tax rate, a bad expiry setting) is a 503 with no snapshot written
+  and no prices or token sent. The customer's copy of the prices is for display only; an order
+  is priced from the service's stored snapshot, looked up by token.
+- **Unknown fields in a request are discarded, never used.** (Fastify's default.) A client
+  cannot send its own discount or total; only the order itself, the token and the claimed
+  figures are read, and the claimed figures are only compared, never trusted.
+
+## D27. The order page: a checked-and-confirmed state machine, modal while busy — Decided
+The page keeps the order in memory and previews the subtotal as the customer edits. The
+authoritative figures come from `POST /quote` when the customer presses **Check my total** or
+**Apply** (a promo code). **Place order** is disabled until the order has been checked.
+- **One state machine decides it** (`logic.js`, unit-tested without a browser): *not checked* →
+  *checking* → *ready* or *needs your OK* → *confirmed*; plus *timed out* and *error*. Place
+  order is enabled only in *ready* and *confirmed*. **Any edit** (a pizza, a topping, quantity,
+  tip, promo) returns it to *not checked* and dims the old figures, so stale figures never sit
+  beside an enabled button.
+- **What needs the customer's OK** (the order is held, with the reason and the new total, until
+  they accept): a price that differs from what they were shown, a promo that *was* applied and
+  no longer applies (it is cleared from the box), and a very large tip (A15). A promo code the
+  customer just typed that is refused (a typo, or an order under $20) is only a message beside
+  the box: it changes nothing they had been shown.
+- **What the page claims** in each quote: the pizza prices and the pre-promo subtotal; and the
+  discount, tax, tip and total too when those figures are on screen and unchanged, which is how
+  a silently changed promo is caught.
+- **Busy means modal.** While any request runs (check, apply, getting new prices; submit later)
+  the whole page is inert and a spinner dialog shows. The spinner only appears after about 150
+  ms so quick answers don't flash; Escape cannot dismiss it; a 15-second timeout turns a hung
+  request into an error message instead of an endless spinner; focus returns to where it was.
+- **The session is visible.** The page shows the deadline and a countdown measured on the
+  *server's* clock (so a wrong device clock can't skew it), warns in the last five minutes,
+  and opens a "session timed out" dialog at expiry (or if the service answers `menu_expired`).
+  "Get new prices" reloads the menu, keeps the pizzas the customer built, tells them what was
+  dropped if anything is no longer sold, and requires a fresh check.
+- **Tip entry** is parsed from text to whole cents or basis points without floating point
+  ("5", "5.50", "18.5"); negative, three decimals or letters are refused with a message.
+- **Place order** sends the customer's accepted figures (the whole quote they saw) with a
+  retry-safe key, behind the same modal spinner; the held-order dialog, OK / Cancel and the
+  move to the status page are described in D28.
+
+## D28. Placing an order: re-validate everything, hold on any mismatch, write all or nothing — Decided
+`POST /orders` (service: `placeOrder`, built on `quoteOrder`, D26) is the only way an order
+comes to exist. The request carries the menu session, the order, the figures the page is
+showing (`claimed`, which must include the subtotal and total) and an `Idempotency-Key`. In
+order, inside one database transaction:
+1. **Is this a retry?** Looked up first (see D29).
+2. **Re-price** from the stored menu snapshot against the *live* promo table; **reject bad
+   data**: 422 with every problem and where it is (`invalid_order`), 409 for an expired or
+   unknown session (`menu_expired` / `menu_unknown`), 400 for a malformed request (including a
+   wrongly-typed field, because type coercion is off, and a missing key or claimed total).
+3. **Hold on any mismatch.** If the figures the page showed differ from ours, if a promo code in
+   the order no longer applies, or if the tip is very large (A15) and the customer has not
+   confirmed *that amount* (`confirmations.largeTipCents` must equal the tip we computed), the
+   answer is 409 `confirmation_required`: the reasons (`prices_changed`, `promo_removed`,
+   `large_tip`), the corrected quote and the differences. **Nothing is written.**
+4. **Otherwise write everything or nothing:** the order with the totals, tax rate and menu
+   snapshot it was priced from; each line with the price ids and cents charged; each topping;
+   each applied promo with its discount; the first status event (no from-status → Not Started,
+   actor customer); and the idempotency record. A failure part-way rolls all of it back and does
+   not consume the key (tested with a trigger that fails the last write).
+
+**The customer's side:** a held order opens a dialog listing what changed and the new total.
+**OK** accepts the updated figures and places the order with them; **Cancel** returns to the
+order screen showing the corrected figures (and needing a fresh OK), having placed nothing. If
+the prices keep changing (three holds in a row) the page stops and asks the customer to check
+again. On success the browser is sent to `/track/:id`.
+
+**One origin for the browser.** The status page is served by the order service, but the
+browser must only ever talk to the builder, so the builder also relays `/track/*`, `/track.js`
+and `/orders/*` (check status, cancel) and nothing else. In particular the kitchen screen is
+not reachable through the builder (tested).
+
+## D29. Retries are made safe with client-supplied idempotency keys — Decided
+The page generates a key per attempt (`ord-` + 32 hex characters, from the browser's secure
+randomness where available) and sends it as the `Idempotency-Key` header, which the builder
+forwards. **Why:** mobile connections time out, and after a timeout the customer cannot know
+whether the order was placed; a duplicate order is a real cost to the restaurant.
+- **Same key and same order → the original order** (200, `replayed: true`), with nothing more
+  written. "Same order" means the same menu session and the same lines, tip and promo codes. The
+  claimed figures and confirmations are deliberately *not* part of it, so a retry that carries
+  updated figures is still recognised.
+- **Checked before anything else**, so a retry still gets its order even if the menu session
+  expired between the attempts (tested: a retry 45 minutes later).
+- **Same key, different order → 422** `idempotency_key_reused`: never answered with the wrong
+  order. A new key is a new submission, so deliberately placing the same order twice is two orders.
+- **The key lives as long as the attempt.** The page keeps it across a network failure, so
+  pressing Place order again cannot place it twice; any edit, an expired session or a hard
+  refusal starts a new attempt with a new key. The key is a row in `idempotency_keys`, with the
+  request hash to detect misuse, and it is written in the same transaction as the order.
+- **Changing an order uses the same mechanism** (D30): the key is bound to the order id as well
+  as the content, so a key from placing, or from another order, cannot be replayed against it.
+
+## D30. Changing an order: only while Not Started, guarded by status and version, every version kept — Decided
+The brief lets the customer update an order until the kitchen starts it. `PUT /orders/:id`
+(service: `updateOrder`) replaces the order's pizzas, tip and promos.
+
+**The guard (this is the invariant).** Inside one transaction the service re-reads the order and
+refuses unless it is `NOT_STARTED` (`order_locked` with the real status, or `order_cancelled`) and
+is still at the `expectedVersion` the customer was looking at (`order_changed`, with the latest
+order so the page can reload). The write itself is conditional on both
+(`WHERE status = 'NOT_STARTED' AND version = ?`) and must change exactly one row, so a change
+racing the kitchen's "start" has exactly one winner: if the change wins the kitchen then cooks the
+*changed* order; if the kitchen wins the change is refused and the order is untouched. Both
+directions are tested. An order that is delivered or cancelled cannot be changed for the same reason.
+
+**Same rules as placing.** Placing and changing share `assess` (`orders/write.ts`): re-price from
+the menu session the customer was shown, re-check every promo against the live table, check the
+tip, and hold the change (409 `confirmation_required`, nothing written) on any difference, a
+refused promo, or an unconfirmed large tip. Idempotent by key like placing (D29). Writing is
+all-or-nothing: the new lines, toppings, promos, totals and revision, or nothing (tested with a
+failure injected at the last write).
+
+**Every version is kept** in `order_revisions` (revision 1 is the order as first placed). The
+order rows always hold the current version; the revisions keep what was ordered, at what prices,
+for how much. **Why:** "what did they originally order, and for how much?" must stay answerable,
+it is the audit trail for changes, and the page can show "first placed at $X". The menu sessions
+revisions refer to are never purged. A change that changes nothing (the same content at the same
+prices) is not a change: nothing is written and no revision is added. A change is *not* a status
+event, so the status history is untouched.
+
+**Prices on a change.** The whole updated order is priced on a **fresh menu**, so the customer sees
+and agrees to today's prices; an unchanged pizza can therefore differ if prices moved since it was
+first ordered. This is deliberate and always shown, never silent (assumption A19). The alternative,
+keeping each unchanged pizza at its original price, would need per-line price locking that the
+brief doesn't call for.
+
+**On the page.** The status page offers *Change my order* only while the server says `canEdit`, and
+when that stops being true it removes the link and says why. The link opens a **separate page for
+changing the order, at its own address `/change/<id>`** (it shares the builder's markup and code,
+so it reuses everything placing uses: pizza editor, tip, promos, quote, confirm dialog, retry-safe
+key, session timer). It opens with **"Your order right now"**, read-only: the status in words, each
+pizza with its toppings and price, the full price breakdown, and how many times it has been
+changed and what it first cost. The editor sits below, pre-filled from the saved order, and adds:
+- **A comparison** of the order as it stands against the updated one, part by part (subtotal, promo
+  discount, tax, tip, total), with the change to what they pay for each (a bigger discount counts
+  as a lower price) and a plain sentence: "$23.21 more than your current order". It is shown as soon
+  as the page opens, because the order is priced on today's menu immediately.
+- **A watch.** The page looks at the order every 3 seconds. If it is no longer `NOT_STARTED`
+  (started, ready, delivered or cancelled) a modal alert opens at once, even half-way through an
+  edit, saying the order can no longer be changed, nothing is saved, and the way back to the status
+  page; everything else is blocked. If the order was changed in another window, the alert says so
+  and offers to reload. A save attempted after the order moved on gets the same alert from the
+  service's answer. The watch skips a poll while a request is in flight; that request hears the
+  answer itself.
+- The decision "can this edit carry on?" is a pure, tested function (`watchVerdict`).
+
+## D31. Pages are re-read on every request in development, and never cached by the browser — Decided
+**What went wrong.** The servers read their page files (HTML and scripts) once at start-up, and the
+dev watcher (`tsx watch`) restarts only when an *imported code module* changes, not when a page
+file does. So after a page edit the running server kept serving the old copy: a customer clicking
+*Change my order* got the old builder page, which loads the menu and ignores everything else, and
+never asked for the order. This was reproduced (edit a page file; five seconds later the running
+server still served the old one) and fixed.
+**The fix.** `pageFile` (`src/lib/files.ts`) re-reads each page and script from disk on every
+request. This is the **default** (`UI_RELOAD=false` turns it off); it was first an opt-in setting,
+and that was not enough: a process that had been started before the setting existed kept serving
+its old copy until it was fully restarted, which is exactly what happened next. A missing file
+still fails at start-up. All pages and scripts are also sent with
+`Cache-Control: no-cache, no-store, must-revalidate`, so a browser cannot hold on to an old copy.
+**Method.** Page behaviour is checked by driving a **real browser** (the installed Chrome, headless,
+through `puppeteer-core` installed in a scratch folder outside the project) against the real running
+servers, recording what the page displays, every request it makes, and any console or script error.
+An earlier attempt used a simulated browser (jsdom); it was useful but it ran the two scripts glued
+together, so it could not catch a page that fails to *load as ES modules* (a mismatched import),
+which is the main thing a real browser catches. Turning the real-browser checks into permanent tests
+is the first item under "Order builder UI" in `next-steps.md`.
+**How to tell what is running.** The servers' own start times (`Get-CimInstance Win32_Process`) and
+the page text itself ("Change your order" at `/change/<id>`) show whether a process predates an edit.
