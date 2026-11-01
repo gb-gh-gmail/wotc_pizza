@@ -29,6 +29,9 @@ let cancelling = false;
 let busy = false;
 let draft = '';
 let timer;
+let wasEditable = null; // whether the last order we showed could still be changed (null before the first)
+
+const money = (cents) => `$${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
 
 function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);
@@ -67,11 +70,40 @@ function render() {
   );
   $('reason').textContent = order.cancellationReason ? `Reason: ${order.cancellationReason}` : '';
 
+  // What the order costs, as charged, and whether it has been changed since it was placed.
+  const p = order.pricing;
+  const rows = [['Subtotal', money(p.subtotalCents)]];
+  for (const promo of p.promos) rows.push([`Promo ${promo.code}`, `−${money(promo.discountCents)}`]);
+  rows.push(['Tax', money(p.taxCents)]);
+  if (p.tip.cents > 0) rows.push(['Tip', money(p.tip.cents)]);
+  const dl = el('dl', {});
+  for (const [k, v] of rows) dl.append(el('dt', {}, k), el('dd', {}, v));
+  dl.append(el('dt', { className: 'total' }, 'Total'), el('dd', { className: 'total' }, money(p.totalCents)));
+  $('pricing').replaceChildren(dl);
+  $('history').textContent =
+    order.revision > 1 && order.original
+      ? `You have changed this order ${order.revision - 1} time${order.revision > 2 ? 's' : ''}. It was first placed at ${money(order.original.totalCents)}.`
+      : '';
+
+  // The moment an order can no longer be changed, say so (once), rather than the option silently vanishing.
+  if (wasEditable === true && !order.canEdit && order.status !== 'CANCELLED') {
+    $('notice').textContent = order.status === 'DELIVERED'
+      ? 'Your order has been delivered, so it can no longer be changed.'
+      : 'The kitchen has started your order, so it can no longer be changed.';
+    $('notice').hidden = false;
+  }
+  if (order.canEdit) $('notice').hidden = true;
+  wasEditable = order.canEdit;
+
   // If the order moved on while the form was open, the form is no longer valid.
   if (!order.canCancel) cancelling = false;
 
   const actions = $('actions');
   actions.replaceChildren();
+  // Changing the order is only offered while the server says it can still be changed.
+  if (order.canEdit) {
+    actions.append(el('a', { className: 'button', href: `/change/${encodeURIComponent(id)}` }, 'Change my order'));
+  }
   if (order.canCancel && !cancelling) {
     actions.append(el('button', { className: 'danger', onclick: () => { cancelling = true; render(); } }, 'Cancel order…'));
   } else if (order.canCancel && cancelling) {

@@ -11,7 +11,11 @@
     "typecheck": "tsc --noEmit",
     "test:watch": "vitest",
     "start:service": "tsx src/service/main.ts",
-    "dev:service": "tsx watch --env-file=.env.development src/service/main.ts"
+    "dev:service": "tsx watch --env-file=.env.development src/service/main.ts",
+    "start:builder": "tsx src/builder/main.ts",
+    "dev:builder": "tsx watch --env-file=.env.development src/builder/main.ts",
+    "dev": "concurrently -n service,builder -c blue,green npm:dev:service npm:dev:builder",
+    "db:reset": "node scripts/db-reset.mjs"
   },
   "dependencies": {
     "fastify": "^5.12.7",
@@ -19,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
+    "concurrently": "^10.0.6",
     "fast-check": "^4.10.2",
     "pino-pretty": "^13.2.0",
     "tsx": "^4.23.15",

@@ -27,6 +27,14 @@
     button { font:inherit; padding:.45rem 1rem; border-radius:.35rem; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer; }
     button.danger { color:var(--accent); border-color:var(--accent); } button:disabled { opacity:.5; cursor:default; }
     input[type=text] { font:inherit; padding:.45rem .5rem; border:1px solid var(--line); border-radius:.35rem; background:var(--card); color:var(--text); flex:1 1 12rem; }
+    #pricing dl { display:grid; grid-template-columns:1fr auto; gap:.15rem 1rem; margin:.6rem 0 0; font-variant-numeric:tabular-nums; }
+    #pricing dd { margin:0; text-align:right; }
+    #pricing .total { font-weight:700; border-top:1px solid var(--line); padding-top:.25rem; margin-top:.15rem; }
+    .newOrder { margin:1.2rem 0 0; text-align:center; }
+    .newOrder a { color:var(--accent); font-weight:600; }
+    .history { color:var(--muted); font-size:.85rem; margin:.4rem 0 0; }
+    #notice { margin-top:.75rem; padding:.6rem .8rem; border:1px solid var(--accent); border-radius:.4rem; color:var(--accent); }
+    a.button { font:inherit; padding:.45rem 1rem; border-radius:.35rem; border:1px solid var(--line); background:var(--card); color:var(--text); text-decoration:none; }
     #error { margin-top:1rem; padding:.6rem .8rem; border:1px solid var(--accent); border-radius:.4rem; color:var(--accent); }
   </style>
 </head>
@@ -39,9 +47,14 @@
       <p id="headline"></p>
       <ol class="steps" id="steps"></ol>
       <ul class="items" id="items"></ul>
+      <div id="pricing" aria-label="What your order costs"></div>
+      <p class="history" id="history"></p>
       <div class="reason" id="reason"></div>
+      <div id="notice" role="alert" hidden></div>
       <div class="actions" id="actions"></div>
     </div>
+    <!-- Outside the order card, so it is there whatever the order's state, and even if the order is not found. -->
+    <p class="newOrder"><a id="newOrder" href="/">Place a new order</a></p>
   </main>
   <script src="/track.js"></script>
 </body>

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Build your order</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f6f4f0; --card:#fff; --text:#1d1b19; --muted:#6b645c; --line:#ddd6cc;
+            --accent:#b3361b; --ok:#2b7a3d; --warn:#9a6700; --head:#efeae3; --warnbg:#fff7e0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#161412; --card:#221f1c; --text:#f1ece6; --muted:#a79f95; --line:#38332e; --accent:#e5694f;
+              --ok:#5fb572; --warn:#e0b04a; --head:#2b2824; --warnbg:#33290f; }
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:1rem; background:var(--bg); color:var(--text); font:16px/1.45 system-ui, sans-serif; }
+    main { max-width:56rem; margin:0 auto; display:grid; gap:1rem; }
+    h1 { font-size:1.4rem; margin:0; } h2 { font-size:1.05rem; margin:0 0 .6rem; }
+    .sub { color:var(--muted); font-size:.85rem; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:.5rem; padding:1rem; }
+    #error { padding:.6rem .8rem; border:1px solid var(--accent); border-radius:.4rem; color:var(--accent); }
+    #session { font-variant-numeric:tabular-nums; }
+    #session.soon { color:var(--warn); font-weight:600; }
+    summary { cursor:pointer; font-weight:600; }
+    .tablewrap { overflow-x:auto; margin-top:.6rem; }
+    table { border-collapse:collapse; width:100%; font-size:.9rem; font-variant-numeric:tabular-nums; }
+    th, td { text-align:right; padding:.3rem .6rem; border-bottom:1px solid var(--line); white-space:nowrap; }
+    th:first-child, td:first-child { text-align:left; }
+    thead th { background:var(--head); }
+    tr.cat th { background:var(--head); text-align:left; font-size:.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+    .rule { color:var(--muted); font-size:.8rem; }
+    .line { border:1px solid var(--line); border-radius:.5rem; padding:.8rem; margin-bottom:.8rem; }
+    .line-head { display:flex; flex-wrap:wrap; gap:.6rem 1rem; align-items:end; }
+    label.f { display:grid; gap:.2rem; font-size:.8rem; color:var(--muted); }
+    select, input[type=number], input[type=text] { font:inherit; padding:.4rem .5rem; border:1px solid var(--line); border-radius:.35rem; background:var(--card); color:var(--text); }
+    input[type=number] { width:5rem; }
+    .line-price { margin-left:auto; text-align:right; font-variant-numeric:tabular-nums; }
+    .line-price .big { font-weight:600; font-size:1.05rem; display:block; }
+    .line-price .small { color:var(--muted); font-size:.8rem; }
+    fieldset { border:0; padding:0; margin:.8rem 0 0; min-width:0; }
+    legend { font-size:.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; padding:0; margin-bottom:.3rem; }
+    .toppings { display:grid; grid-template-columns:repeat(auto-fill, minmax(13rem, 1fr)); gap:.25rem .75rem; }
+    .toppings label { display:flex; gap:.4rem; align-items:center; cursor:pointer; }
+    .toppings .p { margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
+    button { font:inherit; padding:.45rem 1rem; border-radius:.35rem; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer; }
+    button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    button.danger { color:var(--accent); border-color:var(--accent); }
+    button:disabled { opacity:.45; cursor:default; }
+    .row { display:flex; flex-wrap:wrap; gap:.6rem 1rem; align-items:end; margin-top:1rem; }
+    .field-msg { color:var(--accent); font-size:.85rem; margin:.25rem 0 0; min-height:1.1em; }
+    .chips { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.4rem; }
+    .chip { display:inline-flex; gap:.4rem; align-items:center; border:1px solid var(--ok); color:var(--ok); border-radius:1rem; padding:.1rem .3rem .1rem .7rem; font-size:.9rem; }
+    .chip button { border:0; background:none; color:inherit; padding:0 .4rem; font-size:1rem; }
+    #notice { border:1px solid var(--warn); background:var(--warnbg); border-radius:.4rem; padding:.7rem .9rem; margin-top:1rem; }
+    #notice ul { margin:.2rem 0 .6rem; padding-left:1.2rem; }
+    #summary { margin-top:1rem; }
+    #summary.stale { opacity:.5; }
+    #summary .stalenote { color:var(--warn); font-size:.85rem; margin:0 0 .3rem; }
+    #summary dl { display:grid; grid-template-columns:1fr auto; gap:.2rem 1rem; margin:0; font-variant-numeric:tabular-nums; }
+    #summary dd { margin:0; text-align:right; }
+    #summary .total { font-weight:700; font-size:1.15rem; border-top:1px solid var(--line); padding-top:.3rem; margin-top:.2rem; }
+    #summary .save { color:var(--ok); }
+    #summary .without { color:var(--muted); font-size:.85rem; margin:.4rem 0 0; }
+    .actions { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin-top:1rem; }
+    .hint { color:var(--muted); font-size:.85rem; }
+    .note { color:var(--muted); font-size:.8rem; margin:.4rem 0 0; }
+
+    dialog { border:1px solid var(--line); border-radius:.6rem; background:var(--card); color:var(--text); padding:1.2rem 1.4rem; max-width:26rem; }
+    dialog::backdrop { background:rgba(0,0,0,.5); }
+    dialog h2 { margin-top:0; }
+    #editBanner { margin-top:.4rem; padding:.5rem .8rem; border:1px solid var(--warn); background:var(--warnbg); border-radius:.4rem; font-size:.9rem; }
+    #editBanner a, a.button { margin-left:.6rem; }
+    a.button { font:inherit; padding:.45rem 1rem; border-radius:.35rem; border:1px solid var(--line); background:var(--card); color:var(--text); text-decoration:none; display:inline-block; margin-left:0; }
+    a.button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .status-line { font-weight:600; margin:.2rem 0 .6rem; }
+    .status-line .badge { font-size:.8rem; padding:.1rem .5rem; border-radius:1rem; border:1px solid currentColor; color:var(--warn); margin-right:.4rem; }
+    #currentLines { margin:.2rem 0; padding-left:1.2rem; }
+    #currentLines li { display:flex; gap:.6rem; justify-content:space-between; }
+    #currentLines .topping { color:var(--muted); }
+    #currentPricing dl { display:grid; grid-template-columns:1fr auto; gap:.15rem 1rem; margin:.6rem 0 0; font-variant-numeric:tabular-nums; }
+    #currentPricing dd { margin:0; text-align:right; }
+    #currentPricing .total { font-weight:700; border-top:1px solid var(--line); padding-top:.25rem; margin-top:.15rem; }
+    #compare { margin-top:.8rem; }
+    #compare h3 { font-size:.95rem; margin:0 0 .3rem; }
+    #compare table td.effect.up { color:var(--accent); } #compare table td.effect.down { color:var(--ok); }
+    #compare .delta { font-weight:600; margin:.3rem 0 0; }
+    #confirmList { padding-left:1.2rem; }
+    #confirmTotal { font-weight:600; font-size:1.1rem; font-variant-numeric:tabular-nums; }
+    #busy { text-align:center; border:0; box-shadow:0 4px 24px rgba(0,0,0,.3); }
+    .spinner { width:2.4rem; height:2.4rem; margin:0 auto .6rem; border:.3rem solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation-duration:3s; } }
+  </style>
+</head>
+<body>
+  <main id="page">
+    <header>
+      <h1 id="heading">Build your order</h1>
+      <div id="editBanner" hidden>
+        <span id="editBannerText"></span>
+        <a id="editBack" href="/">Back to my order</a>
+      </div>
+      <div class="sub" id="menuInfo" role="status">Loading the menu…</div>
+      <div class="sub" id="session" hidden></div>
+    </header>
+
+    <div id="error" role="alert" hidden></div>
+
+    <section class="card" id="menuCard" hidden>
+      <details>
+        <summary>Menu &amp; prices</summary>
+        <div class="tablewrap"><table id="sizeTable"></table></div>
+        <div class="tablewrap"><table id="toppingTable"></table></div>
+        <p class="note">Toppings cost a percentage of the pizza's base price, so they cost more on bigger pizzas. Prices come from the order service.</p>
+      </details>
+    </section>
+
+    <section class="card" id="currentCard" hidden aria-labelledby="currentTitle">
+      <h2 id="currentTitle">Your order right now</h2>
+      <p id="currentStatus" class="status-line"></p>
+      <ul id="currentLines" class="items"></ul>
+      <div id="currentPricing"></div>
+      <p class="hint" id="currentHistory"></p>
+      <p class="hint">Make your changes below. Nothing changes until you press <strong>Save changes</strong>.</p>
+    </section>
+
+    <section class="card" id="orderCard" hidden>
+      <h2 id="orderTitle">Your pizzas</h2>
+      <div id="lines"></div>
+      <button id="addLine" type="button">+ Add another pizza</button>
+
+      <div class="row">
+        <label class="f">Tip
+          <select id="tipMode">
+            <option value="none">No tip</option>
+            <option value="percent">Percent of bill</option>
+            <option value="amount">Dollar amount</option>
+          </select>
+        </label>
+        <label class="f" id="tipValueWrap" hidden><span id="tipValueLabel">Percent</span>
+          <input id="tipValue" type="text" inputmode="decimal" autocomplete="off" placeholder="18" size="8">
+        </label>
+        <label class="f">Promo code
+          <input id="promoInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Enter a code" size="14">
+        </label>
+        <button id="applyPromo" type="button">Apply</button>
+      </div>
+      <p class="field-msg" id="tipMsg" role="alert"></p>
+      <p class="field-msg" id="promoMsg" role="alert"></p>
+      <div class="chips" id="promoChips" aria-label="Applied promo codes"></div>
+
+      <div id="notice" role="alert" hidden></div>
+
+      <div id="summary" role="status" aria-live="polite"></div>
+
+      <div class="actions">
+        <button id="checkBtn" type="button">Check my total</button>
+        <button id="placeBtn" type="button" class="primary" disabled>Place order</button>
+        <span class="hint" id="placeHint"></span>
+      </div>
+      <p class="note">Your order is kept in this page, so refreshing starts over.</p>
+    </section>
+  </main>
+
+  <dialog id="busy" aria-labelledby="busyLabel">
+    <div class="spinner" aria-hidden="true"></div>
+    <div id="busyLabel" role="status">Working…</div>
+  </dialog>
+
+  <dialog id="confirm" aria-labelledby="confirmTitle">
+    <h2 id="confirmTitle">Please confirm before we place your order</h2>
+    <ul id="confirmList"></ul>
+    <p id="confirmTotal"></p>
+    <div class="actions">
+      <button id="confirmOk" type="button" class="primary">OK, place my order</button>
+      <button id="confirmCancel" type="button">Cancel</button>
+    </div>
+  </dialog>
+
+  <dialog id="locked" role="alertdialog" aria-labelledby="lockedTitle" aria-describedby="lockedText">
+    <h2 id="lockedTitle">This order can no longer be changed</h2>
+    <p id="lockedText"></p>
+    <p class="hint">Nothing you were changing has been saved.</p>
+    <div class="actions">
+      <a id="lockedBack" class="button primary" href="/">Back to my order</a>
+      <button id="lockedReload" type="button" class="primary" hidden>Reload the order</button>
+    </div>
+  </dialog>
+
+  <dialog id="timeout" aria-labelledby="timeoutTitle">
+    <h2 id="timeoutTitle">Your session has timed out</h2>
+    <p id="timeoutText">For your protection, prices are only held for a limited time. They may have changed. Your pizzas have been kept: get the new prices to continue.</p>
+    <button id="renew" type="button" class="primary">Get new prices</button>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
